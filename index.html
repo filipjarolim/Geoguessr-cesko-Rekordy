@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="description" content="Seznam GeoGuessr rekordů CZ/SK komunity">
+    <meta name="keywords" content="GeoČesko, Rekordy, Geoguessr, Tabulka, Houmreu, Zulpi, Zaker, Intruder, Filipes, Fabre, Jeff">
+    <meta name="author" content="Filipes & Houmreu">
+    <meta name="robots" content="index, follow">
+    <meta name="revisit-after" content="1 days">
+    <meta name="language" content="Czech">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+    <title>GeoČesko Rekordy</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" href="assets/img/icon.jpg">
+
+</head>
+<body>
+<header class="header">
+    <div class="logo">
+        <img src="assets/img/icon.jpg" alt="GeoČesko Logo">
+        <span>GeoČesko</span>
+    </div>
+    <nav class="navigation">
+        <a href="#overall-leaderboard">Celkové</a>
+        <a href="#score-time">Skóre/Čas</a>
+        <a href="#streaks">Streaks</a>
+        <a href="#informace">Informace</a>
+    </nav>
+    <div class="actions">
+    <div class="discord-button">
+            <a href="https://discord.gg/wdnKv4Vcxd" target="_blank"><span class="btn-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 6a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v9a3 3 0 0 0 3 3h2v3l4-3h6a3 3 0 0 0 3-3V6Z"/></svg></span>Discord</a>
+        </div>
+    </div>
+</header>
+<aside id="toc-sidebar" class="toc-sidebar" aria-hidden="true">
+    <div class="toc-content">
+        <div class="toc-title">Kategorie</div>
+        <nav class="toc-nav"></nav>
+    </div>
+</aside>
+<div class="container">
+    <section id="overall-leaderboard">
+        <h2>Celkové pořadí</h2>
+        <div id="overall-dynamic"></div>
+    </section>
+    <section id="score-time">
+        <!-----Tabulky Skóre/Čas----->
+        <h2>Skóre/Čas</h2>
+      
+    </section>
+    <section id="streaks">
+        <!-----Tabulky Streaks----->
+        <h2>Streaks</h2>
+        </section>
+    <section id="informace">
+        <h2>Informace</h2>
+        <div class="faq-container">
+            <div class="faq-item" data-faq-open="true">
+                <button class="faq-question" aria-expanded="true" aria-controls="faq-answer-1">
+                    <span class="faq-icon">📋</span>
+                    <span class="faq-title">Základní pravidla</span>
+                    <span class="faq-chevron" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M6 9l6 6 6-6"/>
+                        </svg>
+                    </span>
+                </button>
+                <div class="faq-answer" id="faq-answer-1" role="region">
+                    <div class="faq-content">
+                        <p>Rekordy můžou posílat pouze hráči z <b>Česka</b> a <b>Slovenska</b> do <i>#rekordy</i> channelu na GeoguessrČesko Discordu.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question" aria-expanded="false" aria-controls="faq-answer-2">
+                    <span class="faq-icon">🎮</span>
+                    <span class="faq-title">Typy rekordů</span>
+                    <span class="faq-chevron" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M6 9l6 6 6-6"/>
+                        </svg>
+                    </span>
+                </button>
+                <div class="faq-answer" id="faq-answer-2" role="region">
+                    <div class="faq-content">
+                        <div class="faq-list">
+                            <div class="faq-list-item">
+                                <strong>Skóre/Čas:</strong> Stačí poslat odkaz na hru
+                            </div>
+                            <div class="faq-list-item">
+                                <strong>Streaks:</strong> Vyžaduje video záznam
+                            </div>
+                            <div class="faq-list-item">
+                                <strong>Výjimka:</strong> Extrémní Skóre/Čas rekordy (např. 24K NMPZ CZ/SK) vyžadují také video
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question" aria-expanded="false" aria-controls="faq-answer-3">
+                    <span class="faq-icon">⚠️</span>
+                    <span class="faq-title">Důležité podmínky</span>
+                    <span class="faq-chevron" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M6 9l6 6 6-6"/>
+                        </svg>
+                    </span>
+                </button>
+                <div class="faq-answer" id="faq-answer-3" role="region">
+                    <div class="faq-content">
+                        <ul class="faq-bullet-list">
+                            <li>NMPZ rekordy musí být odehrány <b>ve fullscreenu</b></li>
+                            <li>V jedné tabulce může mít člověk pouze jeden rekord</li>
+                            <li>Assisted rekordy: všichni účastníci musí být z CZ/SK</li>
+                            <li>Challenge link: počítá se jen pokud ho odehrál <b>pouze 1 člověk</b></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question" aria-expanded="false" aria-controls="faq-answer-4">
+                    <span class="faq-icon">👥</span>
+                    <span class="faq-title">Správci rekordů</span>
+                    <span class="faq-chevron" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M6 9l6 6 6-6"/>
+                        </svg>
+                    </span>
+                </button>
+                <div class="faq-answer" id="faq-answer-4" role="region">
+                    <div class="faq-content">
+                        <p>Všechny rekordy spravují <b>Filipes</b>, <b>Houmreu</b> a <b>Zakerr</b>. Návrhy na nové kategorie jsou vítané!</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+            </div>
+<footer class="footer">
+    <div class="footer-content">
+        <div class="footer-text">
+            <span>© 2025 GeoČesko Rekordy</span>
+        </div>
+        <div class="admin-button">
+            <a href="#admin"><span class="btn-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm8.94-3.5a7.94 7.94 0 0 0-.17-1.7l2.05-1.6-2-3.46-2.45 1a8.14 8.14 0 0 0-1.48-.86l-.37-2.6h-4l-.37 2.6c-.52.2-1 .45-1.48.86l-2.45-1-2 3.46 2.05 1.6c-.06.56-.1 1.12-.17 1.7l-2.05 1.6 2 3.46 2.45-1c.47.35.96.64 1.48.86l.37 2.6h4l.37-2.6c.52-.22 1.01-.51 1.48-.86l2.45 1 2-3.46-2.05-1.6Z"/></svg></span>Admin</a>
+        </div>
+            </div>
+</footer>
+</body>
+<!-- GitHub token is injected from .env by inject-token.js script -->
+<script src="script.js"></script>
+<script src="ui.js"></script>
+<script src="admin.js"></script>
+</html>
