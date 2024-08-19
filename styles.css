@@ -34,10 +34,14 @@ h2 {
 
 .leaderboard-header {
     background-color: #000;
-    color: #fff;
     padding: 10px;
     text-align: center;
+}
+
+.leaderboard-header a{
     font-weight: bold;
+    color: #fff;
+    text-decoration: none;
 }
 
 /*-----Modrá tabulka-----*/
