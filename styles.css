@@ -32,6 +32,10 @@ h2 {
     margin: 20px 0 10px 0;
 }
 
+p{
+    text-align: center;
+}
+
 .leaderboard-header {
     background-color: #000;
     padding: 10px;
