@@ -12,5 +12,86 @@ body {
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    background-color: #f1f1f1;
+    background-color: #cfcfcf;
+}
+
+.container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    max-width: 960px;
+    justify-content: center;
+}
+
+h2 {
+    width: 100%;
+    text-align: center;
+    font-size: 40px;
+    font-weight: bold;
+    color: #333;
+    margin: 20px 0 10px 0;
+}
+
+.leaderboard-header {
+    background-color: #000;
+    color: #fff;
+    padding: 10px;
+    text-align: center;
+    font-weight: bold;
+}
+
+/*-----Modrá tabulka-----*/
+
+.leaderboard-blue {
+    width: 300px;
+    background-color: #5e76ff;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+}
+
+.leaderboard-blue-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 15px;
+    color: #fff;
+    font-size: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+.leaderboard-blue-item:last-child {
+    border-bottom: none;
+}
+.leaderboard-blue-item:nth-child(odd) {
+    background-color: #796aff;
+}
+.leaderboard-blue-item:nth-child(even) {
+    background-color: #695eff;
+}
+
+/*-----Zelená tabulka-----*/
+
+.leaderboard-green {
+    width: 300px;
+    background-color: #71ff5e;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+}
+
+.leaderboard-green-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 15px;
+    color: #fff;
+    font-size: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+.leaderboard-green-item:last-child {
+    border-bottom: none;
+}
+.leaderboard-green-item:nth-child(odd) {
+    background-color: #388a3c;
+}
+.leaderboard-green-item:nth-child(even) {
+    background-color: #2fa034;
 }
