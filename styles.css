@@ -99,3 +99,31 @@ h2 {
 .leaderboard-green-item:nth-child(even) {
     background-color: #2fa034;
 }
+
+/*-----Červená Tabulka-----*/
+
+.leaderboard-red {
+    width: 300px;
+    background-color: #ff5e5e;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+}
+
+.leaderboard-red-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 15px;
+    color: #fff;
+    font-size: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+.leaderboard-red-item:last-child {
+    border-bottom: none;
+}
+.leaderboard-red-item:nth-child(odd) {
+    background-color: #ff6a6a;
+}
+.leaderboard-red-item:nth-child(even) {
+    background-color: #ff5e5e;
+}
