@@ -9,18 +9,31 @@
 
 body {
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
     min-height: 100vh;
+    width: 100%;
     background-color: #cfcfcf;
 }
 
 .container {
     display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    margin: 0 auto;
+    padding: 0 0 100px 0;
+}
+
+section {
+    display: flex;
     flex-wrap: wrap;
     gap: 20px;
     max-width: 960px;
     justify-content: center;
+    margin-top: 100px;
 }
 
 h2 {
@@ -135,4 +148,109 @@ span a{
 }
 .leaderboard-red-item:nth-child(even) {
     background-color: #ff5e5e;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    background-color: rgba(207, 207, 207, 0.7);
+    backdrop-filter: blur(18px);
+    width: 90%;
+    margin: 0 auto;
+    position: fixed;
+    top: 0;
+    z-index: 1000;
+}
+
+
+.logo {
+    display: flex;
+    align-items: center;
+    width: 10%;
+}
+
+.logo img {
+    height: 40px;
+    margin-right: 10px;
+    border-radius: 50%;
+}
+
+.logo span {
+    font-weight: bolder;
+}
+
+.navigation a {
+    position: relative;
+    margin: 0 15px;
+    text-decoration: none;
+    color: #333;
+    font-weight: bold;
+}
+
+.navigation a::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 4px;
+    display: block;
+    margin-top: 0px;
+    right: 0;
+    background: #333;
+    transition: width 0.3s ease;
+}
+
+.navigation a:hover::after {
+    width: 100%;
+    left: 0;
+    background: #333;
+}
+
+.navigation a.active::after {
+    width: 100%;
+    left: 0;
+    background: #333;
+}
+
+.discord-button {
+    width: 10%;
+    text-align: right;
+}
+
+.discord-button a {
+    text-decoration: none;
+    color: #fff;
+    background-color: #7289da;
+    padding: 10px 20px;
+    border-radius: 5px;
+    font-weight: bold;
+    transition: background-color 0.3s ease;
+}
+
+.discord-button a:hover {
+    background-color: #5a6fa3;
+}
+
+@media (max-width: 768px) {
+    .header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .navigation {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .navigation a {
+        margin: 10px 0;
+    }
+
+    .discord-button {
+        width: 100%;
+        text-align: center;
+        margin-top: 10px;
+    }
 }
