@@ -234,8 +234,7 @@ span a{
 
 @media (max-width: 768px) {
     .header {
-        flex-direction: column;
-        align-items: flex-start;
+        display: none
     }
 
     .navigation {
