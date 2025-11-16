@@ -261,14 +261,26 @@
         }
         try{
             // Add cache busting with timestamp to ensure fresh data
+            // Use multiple cache busters to bypass aggressive caching
             const cacheBuster = Date.now();
-            data = await fetchJson(`data/enrichedLeaderboards.json?cb=${cacheBuster}&t=${cacheBuster}`);
+            const randomId = Math.random().toString(36).substring(7);
+            data = await fetchJson(`data/enrichedLeaderboards.json?cb=${cacheBuster}&t=${cacheBuster}&r=${randomId}&_=${Date.now()}`);
         }catch(_){
             try{ 
+                // Fallback to raw leaderboards.json if enriched fails
                 const cacheBuster = Date.now();
-                data = await fetchJson(`data/leaderboards.json?cb=${cacheBuster}&t=${cacheBuster}`); 
+                const randomId = Math.random().toString(36).substring(7);
+                data = await fetchJson(`data/leaderboards.json?cb=${cacheBuster}&t=${cacheBuster}&r=${randomId}&_=${Date.now()}`); 
             }
-            catch(__){ /* both failed; leave static */ return; }
+            catch(__){ 
+                console.error('Failed to load both enrichedLeaderboards.json and leaderboards.json');
+                // Try to use cached data if available
+                if(data) {
+                    console.warn('Using cached data as fallback');
+                } else {
+                    return; // both failed; leave static
+                }
+            }
         }
         try{ localStorage.setItem(CACHE_KEY, JSON.stringify(data)); localStorage.setItem(CACHE_TIME_KEY, String(now)); }catch(_){ }
         const groups = data.groups || [];

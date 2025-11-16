@@ -1763,6 +1763,174 @@
         }
     }
 
+    // Enrichment function for saveEdit - enriches groups with map and player data
+    async function enrichGroupsData(groups){
+        const mapCache = new Map();
+        const playerCache = new Map();
+        
+        async function fetchNextData(url){
+            try{
+                const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
+                if(!res.ok) throw new Error(`HTTP ${res.status}`);
+                const html = await res.text();
+                const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+                if(!m) throw new Error('Missing __NEXT_DATA__');
+                return JSON.parse(m[1]);
+            }catch(e){
+                console.warn(`Failed to fetch ${url}:`, e.message);
+                return null;
+            }
+        }
+        
+        function buildImageUrl(path, width = 256, height = 256){
+            return path ? `https://www.geoguessr.com/images/resize:auto:${width}:${height}/gravity:ce/plain/${path}` : null;
+        }
+        
+        async function hydrateMap(mapUrl){
+            if(!mapUrl) return null;
+            if(mapCache.has(mapUrl)) return mapCache.get(mapUrl);
+            
+            try{
+                const slug = new URL(mapUrl).pathname.split('/').filter(Boolean).at(-1);
+                if(!slug) return null;
+                
+                const data = await fetchNextData(`https://www.geoguessr.com/maps/${slug}`);
+                const map = data?.props?.pageProps?.map;
+                if(!map) return null;
+                
+                const creator = map.creator || {};
+                const enriched = {
+                    id: map.id,
+                    slug,
+                    name: map.name,
+                    description: map.description || null,
+                    playUrl: map.playUrl ? `https://www.geoguessr.com${map.playUrl}` : null,
+                    likes: map.likes ?? null,
+                    plays: map.numFinishedGames ?? null,
+                    averageScore: map.averageScore ?? null,
+                    coordinateCount: map.coordinateCount ?? null,
+                    difficulty: map.difficulty || null,
+                    difficultyLevel: map.difficultyLevel || null,
+                    tags: map.tags || [],
+                    createdAt: map.createdAt || null,
+                    updatedAt: map.updatedAt || null,
+                    heroImage: buildImageUrl(creator.pin?.path, 512, 512),
+                    coverAvatar: buildImageUrl(creator.avatar?.fullBodyPath, 320, 320),
+                    creator: {
+                        nick: creator.nick || null,
+                        userId: creator.userId || null,
+                        profileUrl: creator.url ? `https://www.geoguessr.com${creator.url}` : null,
+                        countryCode: creator.countryCode || null,
+                        isVerified: !!creator.isVerified,
+                        isProUser: !!creator.isProUser,
+                        avatarImage: buildImageUrl(creator.avatar?.fullBodyPath),
+                        pinImage: buildImageUrl(creator.pin?.path)
+                    }
+                };
+                
+                mapCache.set(mapUrl, enriched);
+                return enriched;
+            }catch(e){
+                console.warn(`Failed to hydrate map ${mapUrl}:`, e.message);
+                mapCache.set(mapUrl, null);
+                return null;
+            }
+        }
+        
+        async function hydratePlayer(playerUrl){
+            if(!playerUrl) return null;
+            if(playerCache.has(playerUrl)) return playerCache.get(playerUrl);
+            
+            try{
+                const slug = new URL(playerUrl).pathname.split('/').filter(Boolean).at(-1);
+                if(!slug) return null;
+                
+                const data = await fetchNextData(`https://www.geoguessr.com/user/${slug}`);
+                const user = data?.props?.pageProps?.user;
+                if(!user) return null;
+                
+                const stats = data?.props?.pageProps?.userBasicStats || {};
+                const progress = user.progress || {};
+                
+                const enriched = {
+                    nick: user.nick || null,
+                    userId: user.userId || slug,
+                    url: `https://www.geoguessr.com/user/${slug}`,
+                    countryCode: user.countryCode || null,
+                    isVerified: !!user.isVerified,
+                    isProUser: !!user.isProUser,
+                    level: progress.level ?? null,
+                    xp: progress.xp ?? null,
+                    title: progress.title ?? null,
+                    gamesPlayed: stats.gamesPlayed ?? null,
+                    averageGameScore: stats.averageGameScore ?? null,
+                    maxGameScore: stats.maxGameScore ?? null,
+                    streakHighlights: (stats.streakRecords || []).slice(0, 5),
+                    avatarImage: buildImageUrl(user.avatar?.fullBodyPath, 200, 200),
+                    pinImage: buildImageUrl(user.pin?.path, 200, 200)
+                };
+                
+                playerCache.set(playerUrl, enriched);
+                return enriched;
+            }catch(e){
+                console.warn(`Failed to hydrate player ${playerUrl}:`, e.message);
+                playerCache.set(playerUrl, null);
+                return null;
+            }
+        }
+        
+        // Collect all unique URLs first
+        const mapUrls = new Set();
+        const playerUrls = new Set();
+        
+        for(const group of groups){
+            for(const card of group.cards){
+                if(card.mapUrl) mapUrls.add(card.mapUrl);
+                for(const entry of card.entries){
+                    if(entry.playerUrl) playerUrls.add(entry.playerUrl);
+                }
+            }
+        }
+        
+        // Pre-fetch all maps and players in parallel batches
+        const mapArray = Array.from(mapUrls);
+        const playerArray = Array.from(playerUrls);
+        
+        console.log(`Enriching ${mapArray.length} maps and ${playerArray.length} players...`);
+        
+        // Fetch maps in batches
+        for(let i = 0; i < mapArray.length; i += 3){
+            const batch = mapArray.slice(i, i + 3);
+            await Promise.all(batch.map(url => hydrateMap(url)));
+            if(i + 3 < mapArray.length) await new Promise(r => setTimeout(r, 300));
+        }
+        
+        // Fetch players in batches
+        for(let i = 0; i < playerArray.length; i += 5){
+            const batch = playerArray.slice(i, i + 5);
+            await Promise.all(batch.map(url => hydratePlayer(url)));
+            if(i + 5 < playerArray.length) await new Promise(r => setTimeout(r, 300));
+        }
+        
+        // Attach enriched data to groups
+        for(const group of groups){
+            for(const card of group.cards){
+                card.map = mapCache.get(card.mapUrl) || null;
+                for(const entry of card.entries){
+                    entry.playerInfo = playerCache.get(entry.playerUrl) || null;
+                }
+            }
+        }
+        
+        return {
+            groups,
+            stats: {
+                maps: mapCache.size,
+                players: playerCache.size
+            }
+        };
+    }
+
     async function saveEdit(ref, payload){
         // 1) Fetch current JSON
         const owner = 'filipjarolim';
@@ -2073,42 +2241,52 @@
         // If file doesn't exist (no SHA), create it; otherwise update it
         const res1 = await ghPut(savePath, updatedLeaderboards, base.sha, 'chore(admin): edit entry');
 
-        // Update enrichedLeaderboards.json to sync with changes
+        // Enrich and update enrichedLeaderboards.json
         try {
+            console.log('🔄 Starting enrichment process...');
+            showSuccessNotification('🔄 Enriching data with images and player info...');
+            
+            // Deep clone groups to avoid mutating original data
+            const groupsCopy = JSON.parse(JSON.stringify(json.groups));
+            
+            // Enrich the data before saving
+            const enrichedData = await enrichGroupsData(groupsCopy);
+            console.log(`✅ Enrichment complete: ${enrichedData.stats.maps} maps, ${enrichedData.stats.players} players`);
+            
             let enrichedBase = null;
             let enrichedSha = null;
             try {
                 enrichedBase = await ghGet('data/enrichedLeaderboards.json');
                 enrichedSha = enrichedBase.sha;
             } catch(e) {
-                console.warn('enrichedLeaderboards.json not found, will create new');
+                console.log('enrichedLeaderboards.json not found, will create new');
             }
             
-            const enriched = await (async ()=>{
-                if(enrichedBase && enrichedBase.content) {
-                    const ej = JSON.parse(decodeURIComponent(escape(atob(enrichedBase.content))));
-                    ej.groups = json.groups; // replace groups; enrichment will occur on next build or client.
-                    ej.generatedAt = new Date().toISOString();
-                    return JSON.stringify(ej, null, 2);
-                } else {
-                    // Create new enriched structure
-                    return JSON.stringify({
-                        generatedAt: new Date().toISOString(),
-                        source: 'https://www.geoguessr.com',
-                        groups: json.groups
-                    }, null, 2);
-                }
-            })();
-            await ghPut('data/enrichedLeaderboards.json', enriched, enrichedSha, 'chore(admin): sync enriched');
+            const enrichedPayload = {
+                generatedAt: new Date().toISOString(),
+                source: 'https://www.geoguessr.com',
+                groups: enrichedData.groups,
+                lookupCounts: enrichedData.stats
+            };
+            
+            await ghPut('data/enrichedLeaderboards.json', JSON.stringify(enrichedPayload, null, 2), enrichedSha, 'chore(admin): enrich and sync data');
+            console.log('✅ Enriched data saved to GitHub');
+            showSuccessNotification('✅ Enrichment complete! Data saved with images.');
         } catch(e){ 
-            console.warn('Failed to update enrichedLeaderboards.json:', e.message);
+            console.error('❌ Failed to enrich and update enrichedLeaderboards.json:', e);
+            // Don't throw - leaderboards.json is already saved, enrichment can be retried
+            showErrorNotification('⚠️ Data saved but enrichment failed. Images may not load. Error: ' + (e.message || 'Unknown error'));
         }
         
-        // Clear cache and reload page data
+        // Clear ALL cache keys (including ui.js cache)
         try {
+            // Clear admin cache
             localStorage.removeItem('gg_cache');
             localStorage.removeItem('gg_cache_time');
-            console.log('✅ Cache cleared, page will reload fresh data');
+            // Clear ui.js cache (uses different keys)
+            localStorage.removeItem('gg_enriched_cache_v1');
+            localStorage.removeItem('gg_enriched_cache_time_v1');
+            console.log('✅ All caches cleared');
         } catch(_){}
         
         // Try to update local file using File System Access API
@@ -2170,12 +2348,13 @@
         }
         
         // Show success notification
-        showSuccessNotification('✅ Changes saved successfully! Page will refresh...');
+        showSuccessNotification('✅ Changes saved successfully! Refreshing page...');
         
-        // Reload page after short delay to show new data
+        // Force hard reload to bypass all caches and get fresh data
         setTimeout(() => {
-            window.location.reload();
-        }, 1500);
+            // Use location.reload(true) for hard reload, or add cache busting
+            window.location.href = window.location.href.split('#')[0] + '?refresh=' + Date.now();
+        }, 2000); // Increased delay to ensure GitHub API has propagated changes
     }
     function activateAdminMode(){
         if(isAdminAuthenticated()){
