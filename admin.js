@@ -31,7 +31,7 @@
         if(!root){
             root = document.createElement('div');
             root.id = 'admin-root';
-            Object.assign(root.style, { position: 'fixed', inset: '0', background: 'rgba(0,0,0,0.6)', zIndex: '2000', overflow: 'auto', padding: '40px 20px' });
+            Object.assign(root.style, { position: 'fixed', inset: '0', background: 'rgba(0,0,0,0.6)', zIndex: '100000', overflow: 'auto', padding: '40px 20px' });
             document.body.appendChild(root);
         }
         return root;
@@ -75,11 +75,17 @@
         contextMenuBound = false; // Reset context menu binding
         const indicator = document.getElementById('admin-mode-indicator');
         if(indicator) indicator.remove();
+        // Show maintenance overlay after logout
+        showMaintenanceOverlay();
     }
 
     function uiLogin(onSuccess){
         const root = getRoot();
         root.innerHTML = '';
+        // Make sure login form is visible over maintenance overlay and hides content behind
+        root.style.zIndex = '100001'; // Higher than maintenance overlay (99999)
+        root.style.background = 'rgba(0,0,0,0.95)'; // Very dark background to completely hide content
+        
         const pwd = el('input', { type: 'password', placeholder: 'Admin password', style: { padding: '10px', width: '100%', marginBottom: '10px' }});
         const info = el('div', { style: { fontSize: '12px', color: '#666', marginBottom: '10px', padding: '8px', background: '#f5f5f5', borderRadius: '6px' } }, [
             '💡 Tip: Heslo je uloženo jako SHA-256 hash. Pokud jste ho zapomněli, kontaktujte správce nebo změňte hash v kódu.'
@@ -88,9 +94,15 @@
             const ok = await sha256Hex(pwd.value || '') === ADMIN_HASH_SHA256;
             if(!ok){ alert('Wrong password'); return; }
             saveAdminSession();
+            // Hide maintenance overlay AFTER successful login
+            hideMaintenanceOverlay();
             onSuccess();
         }}, ['Enter']);
-        const close = el('button', { style: { padding: '8px 12px', float: 'right' }, onclick: ()=>{ removeRoot(); history.replaceState(null, '', location.pathname + location.search); } }, ['Close']);
+        const close = el('button', { style: { padding: '8px 12px', float: 'right' }, onclick: ()=>{ 
+            removeRoot(); 
+            // Don't hide maintenance overlay when closing login - keep it secure
+            history.replaceState(null, '', location.pathname + location.search); 
+        } }, ['Close']);
         
         // Allow Enter key to submit
         pwd.addEventListener('keypress', async (e)=>{
@@ -98,6 +110,8 @@
                 const ok = await sha256Hex(pwd.value || '') === ADMIN_HASH_SHA256;
                 if(!ok){ alert('Wrong password'); return; }
                 saveAdminSession();
+                // Hide maintenance overlay AFTER successful login
+                hideMaintenanceOverlay();
                 onSuccess();
             }
         });
@@ -122,270 +136,156 @@
     function uiApp(){
         const root = getRoot();
         root.innerHTML = '';
+        root.style.zIndex = '100001';
+        root.style.background = 'rgba(0,0,0,0.95)';
 
-        const tokenInput = el('input', { type: 'password', placeholder: 'GitHub Personal Access Token (stored in your browser)', style: { padding: '10px', width: '100%', marginBottom: '10px', display: 'none' }});
-        const ownerInput = el('input', { value: DEFAULT_OWNER, style: { padding: '8px', marginRight: '8px' }});
-        const repoInput = el('input', { value: DEFAULT_REPO, style: { padding: '8px', marginRight: '8px' }});
-        const branchInput = el('input', { value: DEFAULT_BRANCH, style: { padding: '8px' }});
+        // Modern, clean admin panel
+        const card = el('div', { 
+            style: { 
+                maxWidth: '500px', 
+                margin: '60px auto', 
+                background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)', 
+                borderRadius: '20px', 
+                padding: '32px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+                fontFamily: 'Quicksand, sans-serif',
+                position: 'relative'
+            } 
+        });
 
-        const status = el('div', { style: { margin: '10px 0', color: '#444' } });
+        // Header
+        const header = el('div', { style: { marginBottom: '24px', textAlign: 'center' } });
+        const title = el('h2', { 
+            style: { 
+                fontSize: '28px', 
+                fontWeight: '700', 
+                color: '#0b3d91', 
+                margin: '0 0 8px 0',
+                fontFamily: 'Quicksand, sans-serif'
+            } 
+        }, ['🔧 Admin Panel']);
+        header.appendChild(title);
 
-        const loadBtn = el('button', { onclick: loadData, style: { padding: '8px 12px', marginRight: '8px' } }, ['Load data']);
-        const saveBtn = el('button', { onclick: saveAll, style: { padding: '8px 12px' } }, ['Save changes']);
-        const clearTokenBtn = el('button', { onclick: ()=>{ localStorage.removeItem('gg_pat'); tokenInput.value=''; setStatus('Token cleared'); }, style: { padding: '8px 12px', marginLeft: '8px' } }, ['Clear token']);
-        const logoutBtn = el('button', { onclick: ()=>{ clearAdminSession(); removeRoot(); history.replaceState(null, '', location.pathname + location.search); alert('Logged out'); }, style: { padding: '8px 12px', marginLeft: '8px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' } }, ['Logout']);
-
-        const configRow = el('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' } }, [
-            el('label', {}, ['Owner: ']), ownerInput,
-            el('label', {}, ['Repo: ']), repoInput,
-            el('label', {}, ['Branch: ']), branchInput,
-        ]);
-
-        const editor = el('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }});
-        const visualPane = el('div');
-        const jsonPane = el('div');
-        const jsonArea = el('textarea', { style: { width: '100%', height: '520px', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '12px' } });
-        jsonPane.appendChild(jsonArea);
-
-        editor.appendChild(visualPane);
-        editor.appendChild(jsonPane);
-
-        const adminInfo = el('div', { style: { marginBottom: '12px', padding: '8px', background: '#e7f3ff', borderRadius: '6px', fontSize: '12px', color: '#0066cc' } });
-        function updateAdminInfo(){
+        // Admin status - simplified
+        const adminStatus = el('div', { 
+            style: { 
+                padding: '12px 16px', 
+                background: 'linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%)', 
+                borderRadius: '12px', 
+                fontSize: '14px', 
+                color: '#155724',
+                marginBottom: '24px',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+            } 
+        });
+        
+        function updateAdminStatus(){
             const adminData = localStorage.getItem('gg_admin_data');
             if(adminData){
                 try{
                     const data = JSON.parse(adminData);
                     const loginDate = new Date(data.loginTime);
                     const hoursLeft = Math.max(0, Math.floor((24 * 60 * 60 * 1000 - (Date.now() - data.loginTime)) / (60 * 60 * 1000)));
-                    adminInfo.innerHTML = `✅ Admin session active | Logged in: ${loginDate.toLocaleString('cs-CZ')} | Session expires in: ${hoursLeft}h | Session ID: ${data.sessionId?.substring(0, 8)}...`;
+                    adminStatus.innerHTML = `
+                        <span style="font-size: 18px;">✅</span>
+                        <span style="flex: 1;">Přihlášen jako Admin</span>
+                        <span style="font-size: 12px; opacity: 0.8;">${hoursLeft}h</span>
+                    `;
                 }catch(e){
-                    adminInfo.textContent = 'Admin session active';
+                    adminStatus.innerHTML = '<span style="font-size: 18px;">✅</span><span>Admin session active</span>';
                 }
             }
         }
-        updateAdminInfo();
+        updateAdminStatus();
+
+        // Info text
+        const infoText = el('div', {
+            style: {
+                fontSize: '14px',
+                color: '#666',
+                marginBottom: '24px',
+                lineHeight: '1.6',
+                textAlign: 'center'
+            }
+        });
+        infoText.innerHTML = 'Pravým kliknutím na libovolný rekord můžete ho upravit nebo přidat nový.';
+
+        // Logout button
+        const logoutBtn = el('button', { 
+            onclick: ()=>{ 
+                clearAdminSession(); 
+                removeRoot(); 
+                history.replaceState(null, '', location.pathname + location.search);
+                hideMaintenanceOverlay();
+            }, 
+            style: { 
+                width: '100%',
+                padding: '14px 24px', 
+                fontSize: '16px',
+                fontWeight: '600',
+                background: 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)', 
+                color: '#fff', 
+                border: 'none', 
+                borderRadius: '12px', 
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                boxShadow: '0 4px 12px rgba(220, 53, 69, 0.3)',
+                fontFamily: 'Quicksand, sans-serif'
+            },
+            onmouseenter: function(){
+                this.style.transform = 'translateY(-2px)';
+                this.style.boxShadow = '0 6px 16px rgba(220, 53, 69, 0.4)';
+            },
+            onmouseleave: function(){
+                this.style.transform = 'translateY(0)';
+                this.style.boxShadow = '0 4px 12px rgba(220, 53, 69, 0.3)';
+            }
+        }, ['🚪 Odhlásit se']);
+
+        // Close button
+        const closeBtn = el('button', {
+            onclick: ()=>{ 
+                removeRoot(); 
+                history.replaceState(null, '', location.pathname + location.search);
+            },
+            style: {
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                border: 'none',
+                background: 'rgba(0,0,0,0.1)',
+                color: '#666',
+                cursor: 'pointer',
+                fontSize: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s ease',
+                fontFamily: 'Quicksand, sans-serif'
+            },
+            onmouseenter: function(){
+                this.style.background = 'rgba(0,0,0,0.15)';
+                this.style.transform = 'rotate(90deg)';
+            },
+            onmouseleave: function(){
+                this.style.background = 'rgba(0,0,0,0.1)';
+                this.style.transform = 'rotate(0deg)';
+            }
+        }, ['×']);
+
+        card.appendChild(closeBtn);
+        card.appendChild(header);
+        card.appendChild(adminStatus);
+        card.appendChild(infoText);
+        card.appendChild(logoutBtn);
         
-        root.appendChild(el('div', { style: { maxWidth: '980px', margin: '0 auto', background: '#fff', color: '#111', borderRadius: '12px', padding: '16px' } }, [ adminInfo, tokenInput, configRow, el('div', {}, [loadBtn, saveBtn, clearTokenBtn, logoutBtn]), status, editor ]));
-
-        let state = { leaderboards: null, sha: null };
-
-        // Prefill token from URL, localStorage, or environment variable, and persist on change
-        (function initToken(){
-            // Try to get token from various sources
-            const fromUrl = readTokenFromURL();
-            const saved = localStorage.getItem('gg_pat') || '';
-            
-            // Note: In browser JS, we can't access process.env directly
-            // But if running in Node.js context or via build tool, check window.GITHUB_TOKEN
-            const fromEnv = typeof window !== 'undefined' && window.GITHUB_TOKEN ? window.GITHUB_TOKEN : null;
-            
-            tokenInput.value = fromUrl || fromEnv || saved || '';
-            tokenInput.addEventListener('input', ()=>{
-                localStorage.setItem('gg_pat', tokenInput.value || '');
-            });
-        })();
-
-        function setStatus(msg){ status.textContent = msg; }
-
-        function getGitHubToken(){
-            // Try multiple sources for GitHub token
-            return tokenInput.value || 
-                   localStorage.getItem('gg_pat') || 
-                   (typeof window !== 'undefined' && window.GITHUB_TOKEN) ||
-                   '';
-        }
-
-        async function ghGet(path){
-            const url = `https://api.github.com/repos/${ownerInput.value}/${repoInput.value}/contents/${path}?ref=${branchInput.value}`;
-            const token = getGitHubToken();
-            const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-            if(!res.ok) throw new Error(`GET ${path} ${res.status}`);
-            return await res.json();
-        }
-
-        async function ghPut(path, content, sha, message){
-            const url = `https://api.github.com/repos/${ownerInput.value}/${repoInput.value}/contents/${path}`;
-            const body = { message, content: base64Encode(content), branch: branchInput.value, sha };
-            const token = getGitHubToken();
-            const res = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
-            if(!res.ok) throw new Error(`PUT ${path} ${res.status}`);
-            return await res.json();
-        }
-
-        function renderVisual(){
-            if(!state.leaderboards){ visualPane.innerHTML = ''; return; }
-            const groups = state.leaderboards.groups || [];
-
-            const groupSelect = el('select');
-            groups.forEach((g, i)=> groupSelect.appendChild(el('option', { value: i }, [g.header || g.id])));
-
-            const cardSelect = el('select');
-            const cardsBox = el('div', { style: { marginTop: '8px' } });
-
-            function refreshCards(){
-                const gi = Number(groupSelect.value || 0);
-                cardSelect.innerHTML = '';
-                (groups[gi].cards || []).forEach((c, i)=> cardSelect.appendChild(el('option', { value: i }, [c.title])));
-                drawCard();
-            }
-
-            function drawCard(){
-                const gi = Number(groupSelect.value || 0);
-                const ci = Number(cardSelect.value || 0);
-                const card = groups[gi].cards[ci];
-                cardsBox.innerHTML = '';
-
-                const title = el('input', { value: card.title, style: { padding: '6px', width: '100%', margin: '6px 0' } });
-                const mapUrl = el('input', { value: card.mapUrl || '', style: { padding: '6px', width: '100%', margin: '6px 0' } });
-                const theme = el('select', { style: { padding: '6px', margin: '6px 0' } }, [
-                    el('option', { value: 'primary' }, ['primary']),
-                    el('option', { value: 'secondary' }, ['secondary']),
-                    el('option', { value: 'tertiary' }, ['tertiary'])
-                ]);
-                theme.value = card.theme || 'primary';
-
-                const entriesBox = el('div');
-                function renderEntries(){
-                    entriesBox.innerHTML = '';
-                    (card.entries || []).forEach((e, idx)=>{
-                        const row = el('div', { style: { display: 'grid', gridTemplateColumns: '60px 1fr 1fr 1fr', gap: '6px', marginBottom: '6px' } }, [
-                            el('input', { value: e.rank || '', placeholder: 'rank' }),
-                            el('input', { value: e.player || '', placeholder: 'player' }),
-                            el('input', { value: e.playerUrl || '', placeholder: 'playerUrl' }),
-                            el('input', { value: e.resultLabel || '', placeholder: 'result' }),
-                        ]);
-                        const resUrl = el('input', { value: e.resultUrl || '', placeholder: 'resultUrl', style: { width: '100%', marginBottom: '6px' } });
-                        const rm = el('button', { onclick: ()=>{ card.entries.splice(idx,1); renderEntries(); syncJson(); }, style: { padding: '4px 8px' } }, ['Remove']);
-                        entriesBox.appendChild(row);
-                        entriesBox.appendChild(resUrl);
-                        entriesBox.appendChild(rm);
-                        // Bind updates
-                        const [rankI, playerI, playerUrlI, resultI] = row.querySelectorAll('input');
-                        rankI.oninput = ()=>{ e.rank = rankI.value; syncJson(); };
-                        playerI.oninput = ()=>{ e.player = playerI.value; syncJson(); };
-                        playerUrlI.oninput = ()=>{ e.playerUrl = playerUrlI.value; syncJson(); };
-                        resultI.oninput = ()=>{ e.resultLabel = resultI.value; syncJson(); };
-                        resUrl.oninput = ()=>{ e.resultUrl = resUrl.value; syncJson(); };
-                    });
-                }
-
-                const addEntry = el('button', { onclick: ()=>{ card.entries = card.entries || []; card.entries.push({ rank: '', player: '', playerUrl: '', resultLabel: '', resultUrl: '' }); renderEntries(); syncJson(); }, style: { padding: '6px 10px', marginBottom: '8px' } }, ['Add entry']);
-
-                cardsBox.appendChild(title);
-                cardsBox.appendChild(mapUrl);
-                cardsBox.appendChild(theme);
-                cardsBox.appendChild(addEntry);
-                cardsBox.appendChild(entriesBox);
-                renderEntries();
-
-                title.oninput = ()=>{ card.title = title.value; syncJson(); };
-                mapUrl.oninput = ()=>{ card.mapUrl = mapUrl.value; syncJson(); };
-                theme.onchange = ()=>{ card.theme = theme.value; syncJson(); };
-            }
-
-            groupSelect.onchange = refreshCards;
-            cardSelect.onchange = drawCard;
-
-            visualPane.innerHTML = '';
-            visualPane.appendChild(el('div', {}, [ groupSelect, cardSelect ]));
-            visualPane.appendChild(cardsBox);
-
-            refreshCards();
-        }
-
-        function syncJson(){
-            jsonArea.value = JSON.stringify(state.leaderboards, null, 2);
-        }
-
-        async function loadData(){
-            try{
-                setStatus('Loading data from GitHub...');
-                const res = await ghGet('data/leaderboards.json');
-                state.sha = res.sha;
-                state.leaderboards = JSON.parse(base64Decode(res.content));
-                setStatus('Loaded leaderboards.json');
-                renderVisual();
-                syncJson();
-            }catch(e){
-                setStatus('Failed to load: ' + e.message);
-            }
-        }
-
-        async function enrichAll(groups){
-            async function fetchNextData(url){
-                const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
-                const html = await res.text();
-                const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
-                return JSON.parse(m[1]);
-            }
-            const mapCache = new Map();
-            const playerCache = new Map();
-            async function hydrateMap(mapUrl){
-                if(!mapUrl) return null; if(mapCache.has(mapUrl)) return mapCache.get(mapUrl);
-                const slug = new URL(mapUrl).pathname.split('/').filter(Boolean).at(-1);
-                const data = await fetchNextData(`https://www.geoguessr.com/maps/${slug}`);
-                const map = data?.props?.pageProps?.map;
-                const creator = map?.creator || {};
-                const build = (p)=> p ? `https://www.geoguessr.com/images/resize:auto:256:256/gravity:ce/plain/${p}` : null;
-                const obj = map ? {
-                    id: map.id, slug, name: map.name, description: map.description || null,
-                    playUrl: map.playUrl ? `https://www.geoguessr.com${map.playUrl}` : null,
-                    likes: map.likes ?? null, plays: map.numFinishedGames ?? null, averageScore: map.averageScore ?? null,
-                    coordinateCount: map.coordinateCount ?? null, difficulty: map.difficulty ?? null, difficultyLevel: map.difficultyLevel ?? null,
-                    tags: map.tags ?? [], createdAt: map.createdAt ?? null, updatedAt: map.updatedAt ?? null,
-                    heroImage: build(creator.pin?.path || null), coverAvatar: build(creator.avatar?.fullBodyPath || null),
-                    creator: { nick: creator.nick || null, userId: creator.userId || null, profileUrl: creator.url ? `https://www.geoguessr.com${creator.url}`: null,
-                        countryCode: creator.countryCode || null, isVerified: !!creator.isVerified, isProUser: !!creator.isProUser,
-                        avatarImage: build(creator.avatar?.fullBodyPath || null), pinImage: build(creator.pin?.path || null) }
-                } : null;
-                mapCache.set(mapUrl, obj); return obj;
-            }
-            async function hydratePlayer(playerUrl){
-                if(!playerUrl) return null; if(playerCache.has(playerUrl)) return playerCache.get(playerUrl);
-                const slug = new URL(playerUrl).pathname.split('/').filter(Boolean).at(-1);
-                const data = await fetchNextData(`https://www.geoguessr.com/user/${slug}`);
-                const user = data?.props?.pageProps?.user; const stats = data?.props?.pageProps?.userBasicStats || {}; const progress = user?.progress || {};
-                const build = (p)=> p ? `https://www.geoguessr.com/images/resize:auto:200:200/gravity:ce/plain/${p}` : null;
-                const obj = user ? { nick: user.nick || null, userId: user.userId || slug, url: `https://www.geoguessr.com/user/${slug}`,
-                    countryCode: user.countryCode || null, isVerified: !!user.isVerified, isProUser: !!user.isProUser,
-                    level: progress.level ?? null, xp: progress.xp ?? null, title: progress.title ?? null,
-                    gamesPlayed: stats.gamesPlayed ?? null, averageGameScore: stats.averageGameScore ?? null, maxGameScore: stats.maxGameScore ?? null,
-                    streakHighlights: (stats.streakRecords || []).slice(0,5), avatarImage: build(user.avatar?.fullBodyPath || null), pinImage: build(user.pin?.path || null) } : null;
-                playerCache.set(playerUrl, obj); return obj;
-            }
-            for(const group of groups){
-                for(const card of group.cards){
-                    card.map = await hydrateMap(card.mapUrl);
-                    for(const entry of card.entries){ entry.playerInfo = await hydratePlayer(entry.playerUrl); }
-                }
-            }
-            return { groups, lookupCounts: { maps: mapCache.size, players: playerCache.size }, generatedAt: new Date().toISOString(), source: 'https://www.geoguessr.com' };
-        }
-
-        async function saveAll(){
-            try{
-                if(!tokenInput.value){ alert('Enter a GitHub token'); return; }
-                // Parse edited JSON
-                state.leaderboards = JSON.parse(jsonArea.value);
-                setStatus('Enriching (client-side)...');
-                const enriched = await enrichAll(JSON.parse(JSON.stringify(state.leaderboards)).groups || state.leaderboards.groups);
-
-                setStatus('Committing leaderboards.json...');
-                const updated1 = await ghPut('data/leaderboards.json', JSON.stringify(state.leaderboards, null, 2), state.sha, 'chore(admin): update leaderboards');
-                state.sha = updated1.content.sha;
-
-                setStatus('Committing enrichedLeaderboards.json...');
-                await ghPut('data/enrichedLeaderboards.json', JSON.stringify(enriched, null, 2), null, 'chore(admin): regenerate enriched dataset');
-                setStatus('Done.');
-                alert('Saved to GitHub.');
-            }catch(e){
-                setStatus('Save failed: ' + e.message);
-            }
-        }
-
-        // Auto-load once
-        // loadData();
+        root.appendChild(card);
     }
 
     // Context menu edit (right-click)
@@ -500,7 +400,7 @@
         return usersLoadingPromise;
     }
     
-    async function fetchUserProfile(url, retries = 2){
+    async function fetchUserProfile(url, retries = 1){
         try{
             // Extract user ID from URL
             const userIdMatch = url.match(/\/user\/([a-z0-9]+)/i);
@@ -512,12 +412,23 @@
                 try{
                     const apiUrl = `https://www.geoguessr.com/api/v3/users/${userId}`;
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+                    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
                     
                     const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`, {
                         signal: controller.signal
                     });
                     clearTimeout(timeoutId);
+                    
+                    // Handle rate limiting
+                    if(res.status === 429){
+                        const retryAfter = parseInt(res.headers.get('Retry-After') || '60');
+                        if(attempt < retries){
+                            console.warn(`Rate limited, waiting ${retryAfter}s before retry...`);
+                            await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+                            continue;
+                        }
+                        throw new Error('Rate limited');
+                    }
                     
                     if(res.ok){
                         const userData = await res.json();
@@ -530,8 +441,12 @@
                         }
                     }
                 }catch(apiError){
+                    if(apiError.message === 'Rate limited' || (apiError.message && apiError.message.includes('429'))){
+                        // Rate limited - don't retry immediately
+                        throw apiError;
+                    }
                     if(attempt < retries && apiError.name !== 'AbortError'){
-                        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1))); // Exponential backoff
+                        await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1))); // Exponential backoff
                         continue;
                     }
                     if(apiError.name === 'AbortError'){
@@ -542,7 +457,7 @@
                 }
             }
             
-            // Fallback to HTML parsing
+            // Fallback to HTML parsing (only if API failed, not if rate limited)
             try{
                 const data = await fetchNextData(url);
                 const user = data?.props?.pageProps?.user;
@@ -576,15 +491,15 @@
             enrichmentProgress = { loaded: 0, total: usersToEnrich.length, failed: [] };
             console.log(`Loading profiles for ${usersToEnrich.length} users...`);
             
-            // Load in parallel batches for better performance - increased batch size
-            const batchSize = 8; // Increased from 5 to 8 for faster loading
+            // Load in smaller batches with longer delays to avoid rate limits
+            const batchSize = 2; // Reduced from 8 to 2 to avoid rate limits
             let hasUpdates = false;
             
             for(let i = 0; i < usersToEnrich.length; i += batchSize){
                 const batch = usersToEnrich.slice(i, i + batchSize);
                 const results = await Promise.allSettled(batch.map(async (user) => {
                     try{
-                        const profile = await fetchUserProfile(user.url, 2); // Increased retries from 1 to 2
+                        const profile = await fetchUserProfile(user.url, 1); // Reduced retries
                         if(profile && (profile.name !== user.name || profile.avatarUrl !== user.avatarUrl)){
                             user.name = profile.name;
                             user.avatarUrl = profile.avatarUrl;
@@ -607,9 +522,9 @@
                     }
                 }));
                 
-                // Smaller delay between batches - we can be more aggressive
+                // Longer delay between batches to avoid rate limits
                 if(i + batchSize < usersToEnrich.length){
-                    await new Promise(resolve => setTimeout(resolve, 200)); // Reduced from 300ms to 200ms
+                    await new Promise(resolve => setTimeout(resolve, 3000)); // Increased to 3 seconds
                 }
             }
             
@@ -1194,27 +1109,17 @@
             }
         });
         
-        // Load users on open and enrich with profiles
-        loadUsers().then(async () => {
+        // Load users on open - DON'T auto-enrich to avoid rate limits
+        loadUsers().then(() => {
             updateUserDropdown();
-            // Start enriching users in background with progress updates
-            const enrichPromise = enrichUsersWithProfiles(false, (progress) => {
-                updateUserDropdown();
-            });
-            
-            // Update dropdown periodically while enriching
-            const updateInterval = setInterval(() => {
-                if(!enrichmentPromise){
-                    clearInterval(updateInterval);
-                }else{
-                    updateUserDropdown();
-                }
-            }, 500);
-            
-            enrichPromise.then(() => {
-                clearInterval(updateInterval);
-                updateUserDropdown();
-            });
+            // Only show message if some users are missing data
+            const usersNeedingEnrichment = usersList.filter(u => !u.name || !u.avatarUrl);
+            if(usersNeedingEnrichment.length > 0){
+                statusDiv.style.display = 'block';
+                statusDiv.style.background = '#fff3cd';
+                statusDiv.style.color = '#856404';
+                statusDiv.textContent = `ℹ️ ${usersNeedingEnrichment.length} users need profile data. Click "Reload Users" to fetch.`;
+            }
         });
         
         // Optional manual override fields (collapsed by default)
@@ -1765,21 +1670,57 @@
 
     // Enrichment function for saveEdit - enriches groups with map and player data
     async function enrichGroupsData(groups){
-        const mapCache = new Map();
-        const playerCache = new Map();
+        return enrichGroupsDataWithCache(groups, new Map(), new Map());
+    }
+    
+    async function enrichGroupsDataWithCache(groups, existingMapCache = new Map(), existingPlayerCache = new Map()){
+        const mapCache = new Map(existingMapCache);
+        const playerCache = new Map(existingPlayerCache);
         
-        async function fetchNextData(url){
-            try{
-                const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
-                if(!res.ok) throw new Error(`HTTP ${res.status}`);
-                const html = await res.text();
-                const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
-                if(!m) throw new Error('Missing __NEXT_DATA__');
-                return JSON.parse(m[1]);
-            }catch(e){
-                console.warn(`Failed to fetch ${url}:`, e.message);
-                return null;
+        async function fetchNextData(url, retries = 2){
+            for(let attempt = 0; attempt <= retries; attempt++){
+                try{
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout
+                    
+                    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, {
+                        signal: controller.signal
+                    });
+                    clearTimeout(timeoutId);
+                    
+                    if(res.status === 429) {
+                        // Rate limited - wait longer
+                        const retryAfter = parseInt(res.headers.get('Retry-After') || '60');
+                        throw new Error(`RATE_LIMITED:${retryAfter}`);
+                    }
+                    
+                    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+                    const html = await res.text();
+                    const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+                    if(!m) throw new Error('Missing __NEXT_DATA__');
+                    return JSON.parse(m[1]);
+                }catch(e){
+                    if(e.message && e.message.startsWith('RATE_LIMITED:')) {
+                        const waitTime = parseInt(e.message.split(':')[1]) * 1000;
+                        if(attempt < retries) {
+                            console.warn(`  ⚠️ Rate limited, waiting ${waitTime/1000}s before retry...`);
+                            await new Promise(r => setTimeout(r, waitTime));
+                            continue;
+                        }
+                        console.warn(`  ❌ Rate limited for ${url}, giving up after ${attempt + 1} attempts`);
+                        return null;
+                    }
+                    if(attempt < retries && e.name !== 'AbortError'){
+                        const delay = 2000 * (attempt + 1); // Increased delay
+                        console.warn(`  ⚠️ Attempt ${attempt + 1} failed for ${url}, retrying in ${delay}ms...`);
+                        await new Promise(r => setTimeout(r, delay));
+                        continue;
+                    }
+                    console.warn(`  ❌ Failed to fetch ${url} after ${attempt + 1} attempts:`, e.message);
+                    return null;
+                }
             }
+            return null;
         }
         
         function buildImageUrl(path, width = 256, height = 256){
@@ -1788,15 +1729,26 @@
         
         async function hydrateMap(mapUrl){
             if(!mapUrl) return null;
-            if(mapCache.has(mapUrl)) return mapCache.get(mapUrl);
+            if(mapCache.has(mapUrl)) {
+                const cached = mapCache.get(mapUrl);
+                if(cached !== null) return cached; // Return cached data (null means failed before)
+            }
             
             try{
                 const slug = new URL(mapUrl).pathname.split('/').filter(Boolean).at(-1);
-                if(!slug) return null;
+                if(!slug) {
+                    mapCache.set(mapUrl, null);
+                    return null;
+                }
                 
+                console.log(`  📍 Fetching map: ${slug}`);
                 const data = await fetchNextData(`https://www.geoguessr.com/maps/${slug}`);
                 const map = data?.props?.pageProps?.map;
-                if(!map) return null;
+                if(!map) {
+                    console.warn(`  ⚠️ Map data not found for ${slug}`);
+                    mapCache.set(mapUrl, null);
+                    return null;
+                }
                 
                 const creator = map.creator || {};
                 const enriched = {
@@ -1839,15 +1791,26 @@
         
         async function hydratePlayer(playerUrl){
             if(!playerUrl) return null;
-            if(playerCache.has(playerUrl)) return playerCache.get(playerUrl);
+            if(playerCache.has(playerUrl)) {
+                const cached = playerCache.get(playerUrl);
+                if(cached !== null) return cached; // Return cached data (null means failed before)
+            }
             
             try{
                 const slug = new URL(playerUrl).pathname.split('/').filter(Boolean).at(-1);
-                if(!slug) return null;
+                if(!slug) {
+                    playerCache.set(playerUrl, null);
+                    return null;
+                }
                 
+                console.log(`  👤 Fetching player: ${slug}`);
                 const data = await fetchNextData(`https://www.geoguessr.com/user/${slug}`);
                 const user = data?.props?.pageProps?.user;
-                if(!user) return null;
+                if(!user) {
+                    console.warn(`  ⚠️ User data not found for ${slug}`);
+                    playerCache.set(playerUrl, null);
+                    return null;
+                }
                 
                 const stats = data?.props?.pageProps?.userBasicStats || {};
                 const progress = user.progress || {};
@@ -1898,18 +1861,18 @@
         
         console.log(`Enriching ${mapArray.length} maps and ${playerArray.length} players...`);
         
-        // Fetch maps in batches
-        for(let i = 0; i < mapArray.length; i += 3){
-            const batch = mapArray.slice(i, i + 3);
+        // Fetch maps in batches - slower to avoid rate limits
+        for(let i = 0; i < mapArray.length; i += 2){
+            const batch = mapArray.slice(i, i + 2);
             await Promise.all(batch.map(url => hydrateMap(url)));
-            if(i + 3 < mapArray.length) await new Promise(r => setTimeout(r, 300));
+            if(i + 2 < mapArray.length) await new Promise(r => setTimeout(r, 2000)); // 2s delay between batches
         }
         
-        // Fetch players in batches
-        for(let i = 0; i < playerArray.length; i += 5){
-            const batch = playerArray.slice(i, i + 5);
+        // Fetch players in batches - slower to avoid rate limits
+        for(let i = 0; i < playerArray.length; i += 3){
+            const batch = playerArray.slice(i, i + 3);
             await Promise.all(batch.map(url => hydratePlayer(url)));
-            if(i + 5 < playerArray.length) await new Promise(r => setTimeout(r, 300));
+            if(i + 3 < playerArray.length) await new Promise(r => setTimeout(r, 2000)); // 2s delay between batches
         }
         
         // Attach enriched data to groups
@@ -2246,20 +2209,102 @@
             console.log('🔄 Starting enrichment process...');
             showSuccessNotification('🔄 Enriching data with images and player info...');
             
+            // Try to load existing enriched data first to preserve existing enrichment
+            let existingEnriched = null;
+            let enrichedSha = null;
+            try {
+                const enrichedBase = await ghGet('data/enrichedLeaderboards.json');
+                enrichedSha = enrichedBase.sha;
+                if(enrichedBase && enrichedBase.content) {
+                    existingEnriched = JSON.parse(decodeURIComponent(escape(atob(enrichedBase.content))));
+                    console.log('✅ Loaded existing enriched data, will merge with new changes');
+                }
+            } catch(e) {
+                console.log('enrichedLeaderboards.json not found, will create new');
+            }
+            
             // Deep clone groups to avoid mutating original data
             const groupsCopy = JSON.parse(JSON.stringify(json.groups));
             
-            // Enrich the data before saving
-            const enrichedData = await enrichGroupsData(groupsCopy);
-            console.log(`✅ Enrichment complete: ${enrichedData.stats.maps} maps, ${enrichedData.stats.players} players`);
+            // Create a map of existing enriched data for quick lookup
+            const existingMapCache = new Map();
+            const existingPlayerCache = new Map();
             
-            let enrichedBase = null;
-            let enrichedSha = null;
+            if(existingEnriched && existingEnriched.groups) {
+                for(const group of existingEnriched.groups) {
+                    for(const card of group.cards || []) {
+                        if(card.mapUrl && card.map) {
+                            existingMapCache.set(card.mapUrl, card.map);
+                        }
+                        for(const entry of card.entries || []) {
+                            if(entry.playerUrl && entry.playerInfo) {
+                                existingPlayerCache.set(entry.playerUrl, entry.playerInfo);
+                            }
+                        }
+                    }
+                }
+                console.log(`📦 Loaded ${existingMapCache.size} existing maps and ${existingPlayerCache.size} existing players from cache`);
+            }
+            
+            // Enrich the data - use existing cache to speed up
+            let enrichedData;
             try {
-                enrichedBase = await ghGet('data/enrichedLeaderboards.json');
-                enrichedSha = enrichedBase.sha;
-            } catch(e) {
-                console.log('enrichedLeaderboards.json not found, will create new');
+                enrichedData = await enrichGroupsDataWithCache(groupsCopy, existingMapCache, existingPlayerCache);
+                console.log(`✅ Enrichment complete: ${enrichedData.stats.maps} maps, ${enrichedData.stats.players} players`);
+            } catch(enrichError) {
+                console.warn('⚠️ Enrichment failed, using existing enriched data:', enrichError.message);
+                // If enrichment fails (e.g., rate limit), merge existing enriched data with new groups
+                enrichedData = {
+                    groups: groupsCopy.map(group => {
+                        // Try to find matching group in existing enriched data
+                        const existingGroup = existingEnriched?.groups?.find(g => g.id === group.id);
+                        if(existingGroup) {
+                            // Merge cards - use existing enriched cards where possible
+                            const mergedCards = group.cards.map(card => {
+                                const existingCard = existingGroup.cards?.find(c => c.mapUrl === card.mapUrl || c.title === card.title);
+                                if(existingCard) {
+                                    // Merge: use existing map/playerInfo, but keep new entries
+                                    return {
+                                        ...card,
+                                        map: existingCard.map || card.map || null,
+                                        entries: card.entries.map(entry => {
+                                            const existingEntry = existingCard.entries?.find(e => e.playerUrl === entry.playerUrl);
+                                            return {
+                                                ...entry,
+                                                playerInfo: existingEntry?.playerInfo || entry.playerInfo || null
+                                            };
+                                        })
+                                    };
+                                }
+                                return card;
+                            });
+                            return { ...group, cards: mergedCards };
+                        }
+                        return group;
+                    }),
+                    stats: {
+                        maps: existingMapCache.size,
+                        players: existingPlayerCache.size,
+                        enrichedMaps: 0,
+                        enrichedPlayers: 0
+                    }
+                };
+                showErrorNotification('⚠️ Rate limited - using cached images. Some new images may be missing.');
+            }
+            
+            // Verify enrichment worked
+            let hasEnrichment = false;
+            for(const group of enrichedData.groups) {
+                for(const card of group.cards) {
+                    if(card.map) hasEnrichment = true;
+                    for(const entry of card.entries) {
+                        if(entry.playerInfo) hasEnrichment = true;
+                    }
+                }
+            }
+            
+            if(!hasEnrichment && existingMapCache.size === 0 && existingPlayerCache.size === 0) {
+                throw new Error('Enrichment completed but no enriched data found. Check console for errors.');
             }
             
             const enrichedPayload = {
@@ -2274,6 +2319,7 @@
             showSuccessNotification('✅ Enrichment complete! Data saved with images.');
         } catch(e){ 
             console.error('❌ Failed to enrich and update enrichedLeaderboards.json:', e);
+            console.error('Stack trace:', e.stack);
             // Don't throw - leaderboards.json is already saved, enrichment can be retried
             showErrorNotification('⚠️ Data saved but enrichment failed. Images may not load. Error: ' + (e.message || 'Unknown error'));
         }
@@ -2391,7 +2437,7 @@
         `;
         indicator.innerHTML = `
             <span>🔧 Admin Mode Active</span>
-            <button style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;" onclick="document.getElementById('admin-mode-indicator').remove(); localStorage.removeItem('gg_admin_data'); localStorage.removeItem('gg_admin_ok'); location.reload();">Logout</button>
+            <button style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;" onclick="localStorage.removeItem('gg_admin_data'); localStorage.removeItem('gg_admin_ok'); location.reload();">Logout</button>
         `;
         document.body.appendChild(indicator);
         
@@ -2408,14 +2454,630 @@
         });
     }
 
+    function showMaintenanceOverlay(){
+        // Remove existing overlay if present
+        const existing = document.getElementById('maintenance-overlay');
+        if(existing) existing.remove();
+        
+        // Create maintenance overlay
+        const overlay = document.createElement('div');
+        overlay.id = 'maintenance-overlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #0b3d91 0%, #1e5bb8 50%, #0b3d91 100%);
+            z-index: 99999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            text-align: center;
+            color: white;
+        `;
+        
+        const content = document.createElement('div');
+        content.style.cssText = `
+            max-width: 1200px;
+            width: 100%;
+        `;
+        
+        const title = document.createElement('h1');
+        title.textContent = '🔧 Probíhá údržba';
+        title.style.cssText = `
+            font-size: 64px;
+            font-weight: 700;
+            margin: 0 0 16px 0;
+            text-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            font-family: 'Quicksand', sans-serif;
+        `;
+        
+        const message = document.createElement('p');
+        message.textContent = 'Web je momentálně v údržbě. Prosím zkuste to později.';
+        message.style.cssText = `
+            font-size: 24px;
+            margin: 0 0 40px 0;
+            opacity: 0.9;
+            line-height: 1.6;
+            font-family: 'Quicksand', sans-serif;
+        `;
+        
+        // Sneak peek cards
+        const sneakPeekContainer = document.createElement('div');
+        sneakPeekContainer.style.cssText = `
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+            margin-bottom: 48px;
+            max-width: 1100px;
+            margin-left: auto;
+            margin-right: auto;
+        `;
+        
+        // Card 1: Leaderboard Podium
+        const card1 = document.createElement('div');
+        card1.style.cssText = `
+            background: rgba(255,255,255,0.09);
+            border-radius: 24px;
+            padding: 28px;
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255,255,255,0.18);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.2);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        `;
+        card1.onmouseenter = function(){
+            this.style.transform = 'translateY(-4px)';
+            this.style.boxShadow = '0 12px 40px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.25)';
+            this.style.borderColor = 'rgba(255,255,255,0.25)';
+        };
+        card1.onmouseleave = function(){
+            this.style.transform = 'translateY(0)';
+            this.style.boxShadow = '0 8px 32px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.2)';
+            this.style.borderColor = 'rgba(255,255,255,0.18)';
+        };
+        const card1TitleWrapper = document.createElement('div');
+        card1TitleWrapper.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        `;
+        const icon1 = document.createElement('div');
+        icon1.innerHTML = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="white" fill-opacity="0.95"/></svg>';
+        icon1.style.cssText = `width: 26px; height: 26px; flex-shrink: 0; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));`;
+        const card1Title = document.createElement('div');
+        card1Title.textContent = 'Overall Leaderboard';
+        card1Title.style.cssText = `
+            font-size: 17px;
+            font-weight: 700;
+            color: rgba(255,255,255,0.98);
+            font-family: 'Quicksand', sans-serif;
+            letter-spacing: 0.4px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        `;
+        card1TitleWrapper.appendChild(icon1);
+        card1TitleWrapper.appendChild(card1Title);
+        const podium = document.createElement('div');
+        podium.style.cssText = `
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            gap: 12px;
+            height: 170px;
+            padding-top: 8px;
+        `;
+        
+        // 2nd place
+        const place2 = document.createElement('div');
+        place2.style.cssText = `
+            background: linear-gradient(180deg, rgba(192,192,192,0.3) 0%, rgba(160,160,160,0.2) 100%);
+            width: 72px;
+            min-height: 95px;
+            border-radius: 18px 18px 0 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 12px 8px 8px 8px;
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.25);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.3);
+            transition: all 0.3s ease;
+        `;
+        place2.onmouseenter = function(){
+            this.style.transform = 'translateY(-2px)';
+            this.style.boxShadow = '0 6px 16px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.35)';
+        };
+        place2.onmouseleave = function(){
+            this.style.transform = 'translateY(0)';
+            this.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.3)';
+        };
+        const avatar2 = document.createElement('div');
+        avatar2.style.cssText = `
+            width: 46px;
+            height: 54px;
+            background: linear-gradient(135deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.15) 100%);
+            border-radius: 10px;
+            margin-bottom: 8px;
+            border: 1px solid rgba(255,255,255,0.3);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        `;
+        const name2 = document.createElement('div');
+        name2.textContent = 'Alex Johnson';
+        name2.style.cssText = `
+            font-size: 11.5px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.98);
+            font-family: 'Quicksand', sans-serif;
+            text-align: center;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        `;
+        place2.appendChild(avatar2);
+        place2.appendChild(name2);
+        
+        // 1st place
+        const place1 = document.createElement('div');
+        place1.style.cssText = `
+            background: linear-gradient(180deg, rgba(255,215,0,0.35) 0%, rgba(255,180,0,0.25) 100%);
+            width: 84px;
+            min-height: 140px;
+            border-radius: 20px 20px 0 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 14px 10px 10px 10px;
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.35);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.4);
+            transition: all 0.3s ease;
+        `;
+        place1.onmouseenter = function(){
+            this.style.transform = 'translateY(-3px)';
+            this.style.boxShadow = '0 8px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.45)';
+        };
+        place1.onmouseleave = function(){
+            this.style.transform = 'translateY(0)';
+            this.style.boxShadow = '0 6px 20px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.4)';
+        };
+        const avatar1 = document.createElement('div');
+        avatar1.style.cssText = `
+            width: 52px;
+            height: 64px;
+            background: linear-gradient(135deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.2) 100%);
+            border-radius: 12px;
+            margin-bottom: 10px;
+            border: 1px solid rgba(255,255,255,0.35);
+            box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+        `;
+        const name1 = document.createElement('div');
+        name1.textContent = 'Ryan Miller';
+        name1.style.cssText = `
+            font-size: 12.5px;
+            font-weight: 700;
+            color: rgba(255,255,255,1);
+            font-family: 'Quicksand', sans-serif;
+            text-align: center;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.25);
+        `;
+        place1.appendChild(avatar1);
+        place1.appendChild(name1);
+        
+        // 3rd place
+        const place3 = document.createElement('div');
+        place3.style.cssText = `
+            background: linear-gradient(180deg, rgba(205,127,50,0.3) 0%, rgba(160,82,45,0.2) 100%);
+            width: 68px;
+            min-height: 80px;
+            border-radius: 16px 16px 0 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px 8px 8px 8px;
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.25);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.3);
+            transition: all 0.3s ease;
+        `;
+        place3.onmouseenter = function(){
+            this.style.transform = 'translateY(-2px)';
+            this.style.boxShadow = '0 6px 16px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.35)';
+        };
+        place3.onmouseleave = function(){
+            this.style.transform = 'translateY(0)';
+            this.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.3)';
+        };
+        const avatar3 = document.createElement('div');
+        avatar3.style.cssText = `
+            width: 42px;
+            height: 50px;
+            background: linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.12) 100%);
+            border-radius: 9px;
+            margin-bottom: 7px;
+            border: 1px solid rgba(255,255,255,0.3);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        `;
+        const name3 = document.createElement('div');
+        name3.textContent = 'Chris Davis';
+        name3.style.cssText = `
+            font-size: 10.5px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.98);
+            font-family: 'Quicksand', sans-serif;
+            text-align: center;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        `;
+        place3.appendChild(avatar3);
+        place3.appendChild(name3);
+        
+        podium.appendChild(place2);
+        podium.appendChild(place1);
+        podium.appendChild(place3);
+        card1.appendChild(card1TitleWrapper);
+        card1.appendChild(podium);
+        
+        // Card 2: Record Card
+        const card2 = document.createElement('div');
+        card2.style.cssText = `
+            background: rgba(255,255,255,0.09);
+            border-radius: 24px;
+            padding: 28px;
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255,255,255,0.18);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.2);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        `;
+        card2.onmouseenter = function(){
+            this.style.transform = 'translateY(-4px)';
+            this.style.boxShadow = '0 12px 40px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.25)';
+            this.style.borderColor = 'rgba(255,255,255,0.25)';
+        };
+        card2.onmouseleave = function(){
+            this.style.transform = 'translateY(0)';
+            this.style.boxShadow = '0 8px 32px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.2)';
+            this.style.borderColor = 'rgba(255,255,255,0.18)';
+        };
+        const card2TitleWrapper = document.createElement('div');
+        card2TitleWrapper.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 22px;
+        `;
+        const icon2 = document.createElement('div');
+        icon2.innerHTML = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2ZM12 11.5C10.62 11.5 9.5 10.38 9.5 9C9.5 7.62 10.62 6.5 12 6.5C13.38 6.5 14.5 7.62 14.5 9C14.5 10.38 13.38 11.5 12 11.5Z" fill="white" fill-opacity="0.95"/></svg>';
+        icon2.style.cssText = `width: 26px; height: 26px; flex-shrink: 0; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));`;
+        const card2Title = document.createElement('div');
+        card2Title.textContent = 'Records';
+        card2Title.style.cssText = `
+            font-size: 17px;
+            font-weight: 700;
+            color: rgba(255,255,255,0.98);
+            font-family: 'Quicksand', sans-serif;
+            letter-spacing: 0.4px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        `;
+        card2TitleWrapper.appendChild(icon2);
+        card2TitleWrapper.appendChild(card2Title);
+        const recordList = document.createElement('div');
+        recordList.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        `;
+        const records = [
+            { rank: '1', name: 'Michael Chen', score: '25000' },
+            { rank: '2', name: 'James Wilson', score: '24895' },
+            { rank: '3', name: 'David Brown', score: '24782' }
+        ];
+        records.forEach(record => {
+            const entry = document.createElement('div');
+            entry.style.cssText = `
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 12px;
+                background: rgba(255,255,255,0.08);
+                border-radius: 14px;
+                border: 1px solid rgba(255,255,255,0.12);
+                transition: all 0.3s ease;
+            `;
+            entry.onmouseenter = function(){
+                this.style.background = 'rgba(255,255,255,0.12)';
+                this.style.borderColor = 'rgba(255,255,255,0.18)';
+                this.style.transform = 'translateX(2px)';
+            };
+            entry.onmouseleave = function(){
+                this.style.background = 'rgba(255,255,255,0.08)';
+                this.style.borderColor = 'rgba(255,255,255,0.12)';
+                this.style.transform = 'translateX(0)';
+            };
+            const rank = document.createElement('div');
+            rank.textContent = record.rank;
+            rank.style.cssText = `
+                font-size: 14px;
+                font-weight: 700;
+                color: rgba(255,255,255,0.75);
+                font-family: 'Quicksand', sans-serif;
+                min-width: 22px;
+                text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            `;
+            const avatar = document.createElement('div');
+            avatar.style.cssText = `
+                width: 36px;
+                height: 44px;
+                background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.12) 100%);
+                border-radius: 10px;
+                flex-shrink: 0;
+                border: 1px solid rgba(255,255,255,0.25);
+                box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            `;
+            const info = document.createElement('div');
+            info.style.cssText = `
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            `;
+            const name = document.createElement('div');
+            name.textContent = record.name;
+            name.style.cssText = `
+                font-size: 13.5px;
+                font-weight: 600;
+                color: rgba(255,255,255,0.98);
+                font-family: 'Quicksand', sans-serif;
+                text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            `;
+            const score = document.createElement('div');
+            score.textContent = record.score;
+            score.style.cssText = `
+                font-size: 11.5px;
+                color: rgba(255,255,255,0.75);
+                font-family: 'Quicksand', sans-serif;
+                font-weight: 500;
+            `;
+            info.appendChild(name);
+            info.appendChild(score);
+            entry.appendChild(rank);
+            entry.appendChild(avatar);
+            entry.appendChild(info);
+            recordList.appendChild(entry);
+        });
+        card2.appendChild(card2TitleWrapper);
+        card2.appendChild(recordList);
+        
+        // Card 3: Streaks
+        const card3 = document.createElement('div');
+        card3.style.cssText = `
+            background: rgba(255,255,255,0.09);
+            border-radius: 24px;
+            padding: 28px;
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255,255,255,0.18);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.2);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        `;
+        card3.onmouseenter = function(){
+            this.style.transform = 'translateY(-4px)';
+            this.style.boxShadow = '0 12px 40px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.25)';
+            this.style.borderColor = 'rgba(255,255,255,0.25)';
+        };
+        card3.onmouseleave = function(){
+            this.style.transform = 'translateY(0)';
+            this.style.boxShadow = '0 8px 32px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.2)';
+            this.style.borderColor = 'rgba(255,255,255,0.18)';
+        };
+        const card3TitleWrapper = document.createElement('div');
+        card3TitleWrapper.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 22px;
+        `;
+        const icon3 = document.createElement('div');
+        icon3.innerHTML = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17.09 11L12 5.91L6.91 11L12 16.09L17.09 11ZM12 2L2 12L12 22L22 12L12 2Z" fill="white" fill-opacity="0.95"/></svg>';
+        icon3.style.cssText = `width: 26px; height: 26px; flex-shrink: 0; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));`;
+        const card3Title = document.createElement('div');
+        card3Title.textContent = 'Streaks';
+        card3Title.style.cssText = `
+            font-size: 17px;
+            font-weight: 700;
+            color: rgba(255,255,255,0.98);
+            font-family: 'Quicksand', sans-serif;
+            letter-spacing: 0.4px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        `;
+        card3TitleWrapper.appendChild(icon3);
+        card3TitleWrapper.appendChild(card3Title);
+        const streakList = document.createElement('div');
+        streakList.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        `;
+        const streaks = [
+            { name: 'Robert Taylor', streak: '15' },
+            { name: 'Kevin Martinez', streak: '12' },
+            { name: 'Brian Anderson', streak: '10' }
+        ];
+        streaks.forEach(streak => {
+            const entry = document.createElement('div');
+            entry.style.cssText = `
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 12px;
+                background: rgba(255,255,255,0.08);
+                border-radius: 14px;
+                border: 1px solid rgba(255,255,255,0.12);
+                transition: all 0.3s ease;
+            `;
+            entry.onmouseenter = function(){
+                this.style.background = 'rgba(255,255,255,0.12)';
+                this.style.borderColor = 'rgba(255,255,255,0.18)';
+                this.style.transform = 'translateX(2px)';
+            };
+            entry.onmouseleave = function(){
+                this.style.background = 'rgba(255,255,255,0.08)';
+                this.style.borderColor = 'rgba(255,255,255,0.12)';
+                this.style.transform = 'translateX(0)';
+            };
+            const avatar = document.createElement('div');
+            avatar.style.cssText = `
+                width: 36px;
+                height: 44px;
+                background: linear-gradient(135deg, rgba(255,120,120,0.25) 0%, rgba(255,100,100,0.15) 100%);
+                border-radius: 10px;
+                flex-shrink: 0;
+                border: 1px solid rgba(255,255,255,0.25);
+                box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            `;
+            const info = document.createElement('div');
+            info.style.cssText = `
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            `;
+            const name = document.createElement('div');
+            name.textContent = streak.name;
+            name.style.cssText = `
+                font-size: 13.5px;
+                font-weight: 600;
+                color: rgba(255,255,255,0.98);
+                font-family: 'Quicksand', sans-serif;
+                text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            `;
+            const streakValue = document.createElement('div');
+            streakValue.style.cssText = `
+                display: flex;
+                align-items: center;
+                gap: 5px;
+            `;
+            const streakNum = document.createElement('span');
+            streakNum.textContent = streak.streak;
+            streakNum.style.cssText = `
+                font-size: 11.5px;
+                color: rgba(255,255,255,0.75);
+                font-family: 'Quicksand', sans-serif;
+                font-weight: 500;
+            `;
+            const fireIcon = document.createElement('span');
+            fireIcon.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17.66 11.2C17.43 10.9 17.15 10.64 16.89 10.38C16.59 10.12 16.35 9.85 16.2 9.5C16.05 9.15 16 8.78 16 8.39C16 7.3 16.34 6.28 17 5.4C16.22 4.88 15.3 4.57 14.31 4.57C12.47 4.57 10.89 5.4 9.73 6.73C8.57 8.06 8 9.67 8 11.39C8 12.2 8.12 12.95 8.33 13.63C8.54 14.31 8.83 14.93 9.2 15.47C9.57 16.01 10 16.47 10.5 16.84C11 17.21 11.54 17.5 12.12 17.71C12.7 17.92 13.3 18.03 13.91 18.03C15.5 18.03 16.87 17.5 17.99 16.45C19.11 15.4 19.67 14.05 19.67 12.4C19.67 11.95 19.6 11.53 19.47 11.14C19.34 10.75 19.15 10.4 18.9 10.1L17.66 11.2Z" fill="rgba(255,120,120,0.95)"/></svg>';
+            fireIcon.style.cssText = `width: 13px; height: 13px; display: inline-block; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));`;
+            streakValue.appendChild(streakNum);
+            streakValue.appendChild(fireIcon);
+            info.appendChild(name);
+            info.appendChild(streakValue);
+            entry.appendChild(avatar);
+            entry.appendChild(info);
+            streakList.appendChild(entry);
+        });
+        card3.appendChild(card3TitleWrapper);
+        card3.appendChild(streakList);
+        
+        sneakPeekContainer.appendChild(card1);
+        sneakPeekContainer.appendChild(card2);
+        sneakPeekContainer.appendChild(card3);
+        
+        const loginButton = document.createElement('button');
+        loginButton.textContent = '🔐 Přihlásit se jako Admin';
+        loginButton.style.cssText = `
+            padding: 16px 32px;
+            font-size: 18px;
+            font-weight: 600;
+            background: white;
+            color: #0b3d91;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+            font-family: 'Quicksand', sans-serif;
+        `;
+        loginButton.onmouseenter = function(){
+            this.style.transform = 'translateY(-2px)';
+            this.style.boxShadow = '0 6px 20px rgba(0,0,0,0.3)';
+        };
+        loginButton.onmouseleave = function(){
+            this.style.transform = 'translateY(0)';
+            this.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2)';
+        };
+        loginButton.onclick = function(e){
+            e.preventDefault();
+            e.stopPropagation();
+            // Show login form OVER maintenance overlay (don't hide overlay yet)
+            // Login form has higher z-index (100000) than maintenance overlay (99999)
+            uiLogin(()=>{ 
+                // After successful login, hide maintenance overlay and show content
+                hideMaintenanceOverlay();
+                bindContextMenu(); 
+                showAdminIndicator();
+                removeRoot();
+                location.hash = '#admin';
+            });
+        };
+        
+        content.appendChild(title);
+        content.appendChild(message);
+        content.appendChild(sneakPeekContainer);
+        content.appendChild(loginButton);
+        overlay.appendChild(content);
+        document.body.appendChild(overlay);
+        
+        // Hide main content
+        const container = document.querySelector('.container');
+        const header = document.querySelector('.header');
+        const footer = document.querySelector('.footer');
+        const sidebar = document.querySelector('#toc-sidebar');
+        if(container) container.style.display = 'none';
+        if(header) header.style.display = 'none';
+        if(footer) footer.style.display = 'none';
+        if(sidebar) sidebar.style.display = 'none';
+    }
+    
+    function hideMaintenanceOverlay(){
+        const overlay = document.getElementById('maintenance-overlay');
+        if(overlay) overlay.remove();
+        
+        // Show main content
+        const container = document.querySelector('.container');
+        const header = document.querySelector('.header');
+        const footer = document.querySelector('.footer');
+        const sidebar = document.querySelector('#toc-sidebar');
+        if(container) container.style.display = '';
+        if(header) header.style.display = '';
+        if(footer) footer.style.display = '';
+        if(sidebar) sidebar.style.display = '';
+    }
+
     function boot(){
         if(location.hash === '#admin'){
-            if(isAdminAuthenticated()) uiApp();
-            else uiLogin(uiApp);
+            if(isAdminAuthenticated()) {
+                uiApp();
+                hideMaintenanceOverlay();
+            } else {
+                uiLogin(uiApp);
+                hideMaintenanceOverlay();
+            }
         } else {
             removeRoot();
-            // Auto-activate admin mode if authenticated (even without #admin hash)
-            activateAdminMode();
+            // Check if admin is authenticated
+            if(isAdminAuthenticated()){
+                // Admin is authenticated - show normal content
+                hideMaintenanceOverlay();
+                activateAdminMode();
+            } else {
+                // Admin is not authenticated - show maintenance overlay
+                showMaintenanceOverlay();
+            }
         }
     }
 
@@ -2429,13 +3091,16 @@
         e.preventDefault();
         if(isAdminAuthenticated()){ 
             // Already authenticated, just show admin UI
+            hideMaintenanceOverlay();
             location.hash = '#admin';
         } else {
             // Not authenticated, show login
+            hideMaintenanceOverlay();
             uiLogin(()=>{ 
                 bindContextMenu(); 
                 showAdminIndicator();
                 removeRoot(); 
+                hideMaintenanceOverlay();
                 location.hash = '#admin';
             });
         }

@@ -74,11 +74,26 @@
         const clusters = new Map();
         (cards || []).forEach((c)=>{
             const key = c.mapUrl || c.title;
-            if(!clusters.has(key)) clusters.set(key, { mapUrl: c.mapUrl, title: c.map?.name || c.title, map: c.map, variants: {}, order: [] });
+            if(!clusters.has(key)) {
+                // Use existing map data if available, otherwise create placeholder
+                const mapData = c.map || null;
+                clusters.set(key, { 
+                    mapUrl: c.mapUrl, 
+                    title: mapData?.name || c.title, 
+                    map: mapData, 
+                    variants: {}, 
+                    order: [] 
+                });
+            }
             const cluster = clusters.get(key);
             const variant = detectVariant(c);
             cluster.variants[variant] = c;
             cluster.order.push(variant);
+            // Ensure map data is preserved in cluster
+            if(c.map && !cluster.map) {
+                cluster.map = c.map;
+                cluster.title = c.map.name || cluster.title;
+            }
         });
         return [...clusters.values()];
     }
