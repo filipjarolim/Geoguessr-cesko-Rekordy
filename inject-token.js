@@ -42,7 +42,9 @@ function loadEnv() {
 function injectToken() {
     const env = loadEnv();
     if (!env || !env.GITHUB_TOKEN) {
-        console.warn('⚠️  GITHUB_TOKEN not found in .env file.');
+        console.warn('⚠️  GITHUB_TOKEN not found. For Vercel, set GITHUB_TOKEN in Environment Variables.');
+        console.warn('⚠️  For local development, create .env file with GITHUB_TOKEN=your_token');
+        // Don't exit - let the app run without token (admin will show error)
         return;
     }
     

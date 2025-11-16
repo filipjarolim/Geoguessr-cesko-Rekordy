@@ -471,19 +471,33 @@
 
     // Users management
     let usersList = [];
-    let usersLoadingPromise = null;
+    let usersLoadingPromise = null; // For loadUsers()
+    let enrichmentPromise = null; // For enrichUsersWithProfiles()
     let enrichmentProgress = { loaded: 0, total: 0, failed: [] };
     
     async function loadUsers(){
-        try{
-            const res = await fetch('data/users.json?cb=' + Date.now());
-            const data = await res.json();
-            usersList = data.users || [];
-            return usersList;
-        }catch(e){
-            console.warn('Failed to load users.json:', e);
-            return [];
-        }
+        // Prevent multiple simultaneous loads
+        if(usersLoadingPromise) return usersLoadingPromise;
+        
+        usersLoadingPromise = (async () => {
+            try{
+                const res = await fetch('data/users.json?cb=' + Date.now());
+                if(!res.ok){
+                    throw new Error(`Failed to fetch users.json: ${res.status} ${res.statusText}`);
+                }
+                const data = await res.json();
+                usersList = Array.isArray(data.users) ? data.users : [];
+                usersLoadingPromise = null;
+                return usersList;
+            }catch(e){
+                console.warn('Failed to load users.json:', e);
+                usersList = [];
+                usersLoadingPromise = null;
+                return [];
+            }
+        })();
+        
+        return usersLoadingPromise;
     }
     
     async function fetchUserProfile(url, retries = 2){
@@ -550,9 +564,9 @@
     
     async function enrichUsersWithProfiles(saveToGitHub = false, onProgress = null){
         // Don't start multiple enrichment processes
-        if(usersLoadingPromise) return usersLoadingPromise;
+        if(enrichmentPromise) return enrichmentPromise;
         
-        usersLoadingPromise = (async () => {
+        enrichmentPromise = (async () => {
             const usersToEnrich = usersList.filter(u => !u.name || !u.avatarUrl);
             if(usersToEnrich.length === 0) {
                 enrichmentProgress = { loaded: 0, total: 0, failed: [] };
@@ -562,15 +576,15 @@
             enrichmentProgress = { loaded: 0, total: usersToEnrich.length, failed: [] };
             console.log(`Loading profiles for ${usersToEnrich.length} users...`);
             
-            // Load in parallel batches for better performance
-            const batchSize = 5;
+            // Load in parallel batches for better performance - increased batch size
+            const batchSize = 8; // Increased from 5 to 8 for faster loading
             let hasUpdates = false;
             
             for(let i = 0; i < usersToEnrich.length; i += batchSize){
                 const batch = usersToEnrich.slice(i, i + batchSize);
                 const results = await Promise.allSettled(batch.map(async (user) => {
                     try{
-                        const profile = await fetchUserProfile(user.url, 1);
+                        const profile = await fetchUserProfile(user.url, 2); // Increased retries from 1 to 2
                         if(profile && (profile.name !== user.name || profile.avatarUrl !== user.avatarUrl)){
                             user.name = profile.name;
                             user.avatarUrl = profile.avatarUrl;
@@ -593,9 +607,9 @@
                     }
                 }));
                 
-                // Small delay between batches to avoid rate limiting
+                // Smaller delay between batches - we can be more aggressive
                 if(i + batchSize < usersToEnrich.length){
-                    await new Promise(resolve => setTimeout(resolve, 300));
+                    await new Promise(resolve => setTimeout(resolve, 200)); // Reduced from 300ms to 200ms
                 }
             }
             
@@ -641,11 +655,11 @@
                 }
             }
             
-            usersLoadingPromise = null;
+            enrichmentPromise = null;
             enrichmentProgress = { loaded: 0, total: 0, failed: [] };
         })();
         
-        return usersLoadingPromise;
+        return enrichmentPromise;
     }
     
     async function addUser(profileUrl){
@@ -898,7 +912,7 @@
                     updateUserDropdown();
                     
                     // Restart enrichment
-                    usersLoadingPromise = null;
+                    enrichmentPromise = null;
                     const enrichPromise = enrichUsersWithProfiles(false, (progress) => {
                         updateUserDropdown();
                     });
@@ -949,7 +963,7 @@
             }
             
             // Show loading indicator with progress if enriching
-            if(usersLoadingPromise){
+            if(enrichmentPromise){
                 const progress = enrichmentProgress.total > 0 
                     ? `${enrichmentProgress.loaded}/${enrichmentProgress.total}`
                     : '';
@@ -1190,7 +1204,7 @@
             
             // Update dropdown periodically while enriching
             const updateInterval = setInterval(() => {
-                if(!usersLoadingPromise){
+                if(!enrichmentPromise){
                     clearInterval(updateInterval);
                 }else{
                     updateUserDropdown();
