@@ -1,0 +1,12 @@
+{
+  "buildCommand": "npm run inject-token",
+  "outputDirectory": ".",
+  "framework": null,
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+
