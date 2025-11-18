@@ -20,3 +20,6 @@ Thumbs.db
 *.log
 npm-debug.log*
 
+# Generated enriched data (too large for git)
+data/enrichedLeaderboards.json
+
