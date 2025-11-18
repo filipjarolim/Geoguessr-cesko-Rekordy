@@ -1455,10 +1455,16 @@
                 statusDiv.style.color = '#155724';
                 statusDiv.textContent = '✅ Úspěšně uloženo!';
                 
+                // Clear cache and force refresh
+                try {
+                    localStorage.removeItem('gg_enriched_cache_v1');
+                    localStorage.removeItem('gg_enriched_cache_time_v1');
+                } catch(_) {}
+                
                 setTimeout(() => {
                     removeRoot();
-                    window.dispatchEvent(new Event('gg-refresh-data'));
-                    showSuccessNotification('✅ Rekord úspěšně uložen!');
+                    // Force page reload to ensure fresh data is loaded
+                    window.location.reload();
                 }, 1500);
             }catch(err){
                 statusDiv.style.background = '#f8d7da';
@@ -3521,7 +3527,58 @@
         }
         
         if(ref.entryIndex != null){
-            card.entries[ref.entryIndex] = Object.assign({}, card.entries[ref.entryIndex], payload);
+            // Update existing entry - completely replace with new data
+            const oldEntry = card.entries[ref.entryIndex];
+            const oldPlayerUrl = oldEntry?.playerUrl;
+            const newPlayerUrl = payload.playerUrl || oldPlayerUrl;
+            
+            // Create clean payload - remove empty/undefined values but keep all provided values
+            const cleanPayload = {};
+            Object.keys(payload).forEach(key => {
+                // Keep all non-empty values, including empty strings if explicitly provided
+                if(payload[key] !== undefined && payload[key] !== null) {
+                    cleanPayload[key] = payload[key];
+                }
+            });
+            
+            // If playerUrl changed, clear old playerInfo (will be fetched during enrichment)
+            // Otherwise preserve existing playerInfo if available
+            const playerUrlChanged = oldPlayerUrl && newPlayerUrl && oldPlayerUrl !== newPlayerUrl;
+            const preservedPlayerInfo = (!playerUrlChanged && oldEntry?.playerInfo) ? oldEntry.playerInfo : null;
+            
+            // Create updated entry - new data takes precedence, but preserve playerInfo if URL didn't change
+            const updatedEntry = {
+                ...oldEntry, // Start with old entry
+                ...cleanPayload, // Overwrite with new data
+                // Handle playerInfo: clear if URL changed, preserve if same, use new if provided
+                playerInfo: playerUrlChanged ? null : (cleanPayload.playerInfo || preservedPlayerInfo || null)
+            };
+            
+            // Ensure playerUrl is set if provided
+            if(cleanPayload.playerUrl) {
+                updatedEntry.playerUrl = cleanPayload.playerUrl;
+            }
+            // Ensure player name is set if provided
+            if(cleanPayload.player) {
+                updatedEntry.player = cleanPayload.player;
+            }
+            
+            card.entries[ref.entryIndex] = updatedEntry;
+            console.log(`✅ Updated entry at index ${ref.entryIndex}:`, {
+                old: { 
+                    player: oldEntry?.player, 
+                    playerUrl: oldEntry?.playerUrl,
+                    resultLabel: oldEntry?.resultLabel,
+                    rank: oldEntry?.rank
+                },
+                new: { 
+                    player: updatedEntry.player, 
+                    playerUrl: updatedEntry.playerUrl,
+                    resultLabel: updatedEntry.resultLabel,
+                    rank: updatedEntry.rank
+                },
+                playerUrlChanged: playerUrlChanged
+            });
         } else {
             card.entries = card.entries || [];
             // Auto-assign rank if not provided
@@ -3589,10 +3646,66 @@
                 console.log(`📦 Loaded ${existingMapCache.size} existing maps and ${existingPlayerCache.size} existing players from cache`);
             }
             
+            // Smart entry matching function - matches by multiple criteria
+            function findMatchingEntry(newEntry, existingEntries) {
+                if(!existingEntries || existingEntries.length === 0) return null;
+                
+                // Try multiple matching strategies
+                // 1. Exact playerUrl match (most reliable)
+                if(newEntry.playerUrl) {
+                    const urlMatch = existingEntries.find(e => e.playerUrl === newEntry.playerUrl);
+                    if(urlMatch) return urlMatch;
+                }
+                
+                // 2. Match by rank + resultUrl (if both exist)
+                if(newEntry.rank && newEntry.resultUrl) {
+                    const rankUrlMatch = existingEntries.find(e => 
+                        e.rank === newEntry.rank && 
+                        e.resultUrl === newEntry.resultUrl
+                    );
+                    if(rankUrlMatch) return rankUrlMatch;
+                }
+                
+                // 3. Match by rank + resultLabel (if both exist)
+                if(newEntry.rank && newEntry.resultLabel) {
+                    const rankLabelMatch = existingEntries.find(e => 
+                        e.rank === newEntry.rank && 
+                        e.resultLabel === newEntry.resultLabel
+                    );
+                    if(rankLabelMatch) return rankLabelMatch;
+                }
+                
+                // 4. Match by resultUrl only (if unique)
+                if(newEntry.resultUrl) {
+                    const urlOnlyMatch = existingEntries.find(e => e.resultUrl === newEntry.resultUrl);
+                    if(urlOnlyMatch) return urlOnlyMatch;
+                }
+                
+                return null;
+            }
+            
+            // Check if we need to fetch new playerInfo for updated entries
+            const entriesNeedingPlayerInfo = [];
+            for(const group of groupsCopy) {
+                for(const card of group.cards || []) {
+                    for(const entry of card.entries || []) {
+                        // If entry has playerUrl but no playerInfo, or playerUrl changed, we need to fetch
+                        if(entry.playerUrl && !entry.playerInfo) {
+                            entriesNeedingPlayerInfo.push(entry);
+                        }
+                    }
+                }
+            }
+            
+            if(entriesNeedingPlayerInfo.length > 0) {
+                console.log(`📥 Found ${entriesNeedingPlayerInfo.length} entries needing playerInfo, will fetch during enrichment`);
+            }
+            
             // Enrich the data - use existing cache to speed up
             let enrichedData;
             try {
                 // Only enrich if we have new data to fetch, otherwise use existing cache
+                // enrichGroupsDataWithCache will automatically fetch missing playerInfo
                 enrichedData = await enrichGroupsDataWithCache(groupsCopy, existingMapCache, existingPlayerCache);
                 console.log(`✅ Enrichment complete: ${enrichedData.stats.maps} maps, ${enrichedData.stats.players} players`);
             } catch(enrichError) {
@@ -3606,18 +3719,45 @@
                         if(existingGroup) {
                             // Merge cards - use existing enriched cards where possible
                             const mergedCards = group.cards.map(card => {
-                                const existingCard = existingGroup.cards?.find(c => c.mapUrl === card.mapUrl || c.title === card.title);
+                                const existingCard = existingGroup.cards?.find(c => 
+                                    (c.mapUrl && card.mapUrl && c.mapUrl === card.mapUrl) || 
+                                    (!c.mapUrl && !card.mapUrl && c.title === card.title)
+                                );
                                 if(existingCard) {
-                                    // Merge: use existing map/playerInfo, but keep new entries
+                                    // Merge: use existing map/playerInfo, but keep new entries with smart matching
+                                    // CRITICAL: New data from leaderboards.json takes precedence - it's the source of truth
                                     return {
-                                        ...card,
-                                        map: existingCard.map || card.map || null,
+                                        ...card, // Use new card structure
+                                        map: existingCard.map || card.map || null, // Preserve map images
                                         entries: card.entries.map(entry => {
-                                            const existingEntry = existingCard.entries?.find(e => e.playerUrl === entry.playerUrl);
-                                            return {
-                                                ...entry,
-                                                playerInfo: existingEntry?.playerInfo || entry.playerInfo || null
-                                            };
+                                            // Use smart matching to find existing entry
+                                            const existingEntry = findMatchingEntry(entry, existingCard.entries);
+                                            if(existingEntry) {
+                                                // IMPORTANT: New entry data is the source of truth
+                                                // Only preserve playerInfo if:
+                                                // 1. New entry doesn't have playerInfo yet (will be fetched)
+                                                // 2. PlayerUrl matches (same user, just preserving image)
+                                                const shouldPreservePlayerInfo = 
+                                                    !entry.playerInfo && 
+                                                    entry.playerUrl === existingEntry.playerUrl && 
+                                                    existingEntry.playerInfo;
+                                                
+                                                const mergedEntry = {
+                                                    ...entry, // NEW DATA TAKES PRECEDENCE - this is the updated entry
+                                                    // Only preserve playerInfo if URL matches and new entry doesn't have it
+                                                    playerInfo: shouldPreservePlayerInfo ? existingEntry.playerInfo : entry.playerInfo || null
+                                                };
+                                                
+                                                console.log(`🔄 Merged entry:`, {
+                                                    new: { player: entry.player, playerUrl: entry.playerUrl, rank: entry.rank },
+                                                    existing: { playerUrl: existingEntry.playerUrl, hasPlayerInfo: !!existingEntry.playerInfo },
+                                                    preservedPlayerInfo: shouldPreservePlayerInfo
+                                                });
+                                                
+                                                return mergedEntry;
+                                            }
+                                            // New entry, no existing match - use as-is
+                                            return entry;
                                         })
                                     };
                                 }
@@ -3637,24 +3777,55 @@
                 showErrorNotification('⚠️ Rate limited - using cached images. Some new images may be missing.');
             }
             
+            // Smart entry matching function (reuse from above)
+            function findMatchingEntry(newEntry, existingEntries) {
+                if(!existingEntries || existingEntries.length === 0) return null;
+                if(newEntry.playerUrl) {
+                    const urlMatch = existingEntries.find(e => e.playerUrl === newEntry.playerUrl);
+                    if(urlMatch) return urlMatch;
+                }
+                if(newEntry.rank && newEntry.resultUrl) {
+                    const rankUrlMatch = existingEntries.find(e => 
+                        e.rank === newEntry.rank && e.resultUrl === newEntry.resultUrl
+                    );
+                    if(rankUrlMatch) return rankUrlMatch;
+                }
+                if(newEntry.resultUrl) {
+                    const urlOnlyMatch = existingEntries.find(e => e.resultUrl === newEntry.resultUrl);
+                    if(urlOnlyMatch) return urlOnlyMatch;
+                }
+                return null;
+            }
+            
             // Ensure we preserve ALL existing images even if enrichment partially failed
             // Merge back any existing enriched data that wasn't overwritten
+            // BUT: prioritize new data over old data to ensure updates are reflected
             if(existingEnriched && existingEnriched.groups) {
                 for(const existingGroup of existingEnriched.groups) {
                     const group = enrichedData.groups.find(g => g.id === existingGroup.id);
                     if(group) {
                         for(const existingCard of existingGroup.cards || []) {
-                            const card = group.cards.find(c => c.mapUrl === existingCard.mapUrl || c.title === existingCard.title);
+                            const card = group.cards.find(c => 
+                                (c.mapUrl && existingCard.mapUrl && c.mapUrl === existingCard.mapUrl) || 
+                                (!c.mapUrl && !existingCard.mapUrl && c.title === existingCard.title)
+                            );
                             if(card) {
                                 // Preserve existing map if new one is missing
                                 if(existingCard.map && !card.map) {
                                     card.map = existingCard.map;
                                 }
-                                // Preserve existing playerInfo for entries
+                                // Smart merge: preserve existing playerInfo ONLY if entry matches and new entry doesn't have playerInfo
+                                // This ensures updates are reflected while preserving images for unchanged entries
                                 for(const existingEntry of existingCard.entries || []) {
-                                    const entry = card.entries.find(e => e.playerUrl === existingEntry.playerUrl);
-                                    if(entry && existingEntry.playerInfo && !entry.playerInfo) {
+                                    const entry = findMatchingEntry(existingEntry, card.entries);
+                                    if(entry) {
+                                        // Only preserve playerInfo if:
+                                        // 1. New entry doesn't have playerInfo yet, AND
+                                        // 2. PlayerUrl matches (user didn't change)
+                                        if(!entry.playerInfo && existingEntry.playerInfo && 
+                                           entry.playerUrl === existingEntry.playerUrl) {
                                         entry.playerInfo = existingEntry.playerInfo;
+                                        }
                                     }
                                 }
                             }
@@ -3686,20 +3857,24 @@
             };
             
                 await ghPut('data/enrichedLeaderboards.json', JSON.stringify(enrichedPayload, null, 2), enrichedSha, 'chore(admin): enrich and sync data', 3);
-                console.log('✅ Enriched data saved to GitHub');
-                showSuccessNotification('✅ Enrichment complete! Data saved with images.');
-            } catch(e){ 
-                console.error('❌ Failed to enrich and update enrichedLeaderboards.json:', e);
-                console.error('Stack trace:', e.stack);
-                // Don't throw - leaderboards.json is already saved, enrichment can be retried
+            console.log('✅ Enriched data saved to GitHub');
+            showSuccessNotification('✅ Enrichment complete! Data saved with images.');
+        } catch(e){ 
+            console.error('❌ Failed to enrich and update enrichedLeaderboards.json:', e);
+            console.error('Stack trace:', e.stack);
+            // Don't throw - leaderboards.json is already saved, enrichment can be retried
                 showSuccessNotification('⚠️ Data saved but enrichment failed. Images may not load. Error: ' + (e.message || 'Unknown error'));
-            }
+        }
         })(); // Run in background, don't await
         
-        // Clear ALL cache keys (including ui.js cache)
+        // Clear ALL cache keys (including ui.js cache) to force refresh
         try {
             // Clear admin cache
             localStorage.removeItem('gg_cache');
+            // Clear UI cache to force reload of updated data
+            localStorage.removeItem('gg_enriched_cache_v1');
+            localStorage.removeItem('gg_enriched_cache_time_v1');
+            console.log('✅ Cleared all caches to force data refresh');
             localStorage.removeItem('gg_cache_time');
             // Clear ui.js cache (uses different keys)
             localStorage.removeItem('gg_enriched_cache_v1');
