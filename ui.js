@@ -121,7 +121,8 @@
                     map: mapData, 
                     variants: {}, 
                     order: [],
-                    originalCardIndices: [] // Store original card indices for admin editing
+                    originalCardIndices: [], // Store original card indices for admin editing
+                    variantToCardIndex: {} // Map variant -> original card index
                 });
             }
             const cluster = clusters.get(key);
@@ -131,6 +132,8 @@
             // Store original card index for this variant
             if(!cluster.originalCardIndices) cluster.originalCardIndices = [];
             cluster.originalCardIndices.push(originalIndex);
+            // Map variant to original card index for reliable lookup
+            cluster.variantToCardIndex[variant] = originalIndex;
             // Ensure map data is preserved in cluster
             if(c.map && !cluster.map) {
                 cluster.map = c.map;
@@ -225,11 +228,20 @@
             ])
         ]);
 
-        const list = el('ul', { class: 'gg-entry-list' }, (card.entries || []).map((e, idx)=> renderEntry(e, idx)));
+        const list = el('ul', { class: 'gg-entry-list' }, (card.entries || []).map((e, idx)=> {
+            const entryEl = renderEntry(e, idx);
+            // Store mapUrl and variant for reliable lookup (even for non-cluster cards)
+            entryEl.dataset.mapUrl = card.mapUrl || '';
+            const variant = detectVariant(card);
+            entryEl.dataset.variant = variant;
+            entryEl.dataset.originalCardIndex = String(originalCardIndex !== undefined ? originalCardIndex : cardIndex);
+            return entryEl;
+        }));
 
         const article = el('article', { class: `gg-card ${themeClass(card.theme)}` }, [ header, list ]);
         article.dataset.groupId = groupId;
         article.dataset.cardIndex = String(originalCardIndex !== undefined ? originalCardIndex : cardIndex);
+        article.dataset.mapUrl = card.mapUrl || '';
         return article;
     }
 
@@ -273,10 +285,15 @@
             variantHeader.appendChild(el('span', { class: 'gg-chip' }, [key]));
             col.appendChild(variantHeader);
             const list = el('ul', { class: 'gg-entry-list' });
-            // Store original card index for each variant entry
-            const variantCardIndex = originalCardIndices[variantIdx] !== undefined ? originalCardIndices[variantIdx] : primaryCardIndex;
+            // Get original card index for this variant
+            const variantCardIndex = cluster.variantToCardIndex && cluster.variantToCardIndex[key] !== undefined 
+                ? cluster.variantToCardIndex[key] 
+                : (originalCardIndices[variantIdx] !== undefined ? originalCardIndices[variantIdx] : primaryCardIndex);
             (variantCard?.entries || []).forEach((e, idx)=> {
                 const entryEl = renderEntry(e, idx);
+                // Store mapUrl, variant, and original card index for reliable lookup
+                entryEl.dataset.mapUrl = cluster.mapUrl || '';
+                entryEl.dataset.variant = key;
                 entryEl.dataset.originalCardIndex = String(variantCardIndex);
                 list.appendChild(entryEl);
             });

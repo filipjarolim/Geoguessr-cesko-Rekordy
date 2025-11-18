@@ -26,6 +26,15 @@
     function base64Encode(str){ return btoa(unescape(encodeURIComponent(str))); }
     function base64Decode(b64){ return decodeURIComponent(escape(atob(b64))); }
 
+    // Detect variant from card title (same logic as ui.js)
+    function detectVariant(card){
+        const t = (card.title || '').toLowerCase();
+        if (t.includes('nmpz')) return 'NMPZ';
+        if (t.includes('nm') || t.includes('no move')) return 'NM';
+        if (t.includes('moving') || t.includes('25k')) return 'MOVING';
+        return 'OTHER';
+    }
+
     function getRoot(){
         let root = document.getElementById('admin-root');
         if(!root){
@@ -531,16 +540,40 @@
             const hostCard = card || entry.closest('.gg-card');
             if(!hostCard) return;
             const groupId = hostCard.dataset.groupId;
-            // Use originalCardIndex from entry if available (for cluster cards), otherwise use cardIndex
-            let cardIndex = Number(hostCard.dataset.cardIndex);
+            
+            // NEW APPROACH: Use mapUrl + variant to find the correct card instead of relying on indices
+            let cardIndex = null;
+            const mapUrl = entry?.dataset.mapUrl || hostCard.dataset.mapUrl || '';
+            const variant = entry?.dataset.variant || '';
+            
             if(entry && entry.dataset.originalCardIndex) {
+                // Use originalCardIndex if available (most reliable)
                 cardIndex = Number(entry.dataset.originalCardIndex);
-                console.log(`📍 Using original card index ${cardIndex} from entry (cluster card)`);
+                console.log(`📍 Using original card index ${cardIndex} from entry dataset`);
+            } else {
+                // Fallback to cardIndex from hostCard
+                cardIndex = Number(hostCard.dataset.cardIndex);
             }
+            
             const entryIndex = entry ? Number(entry.dataset.entryIndex) : null;
 
-            console.log(`🔍 Opening editor: groupId=${groupId}, cardIndex=${cardIndex}, entryIndex=${entryIndex}`);
-            openEditor({ groupId, cardIndex, entryIndex });
+            console.log(`🔍 Opening editor:`, {
+                groupId,
+                cardIndex,
+                entryIndex,
+                mapUrl: mapUrl || '(none)',
+                variant: variant || '(none)',
+                hasOriginalCardIndex: !!(entry?.dataset.originalCardIndex)
+            });
+            
+            // Pass mapUrl and variant for reliable card lookup
+            openEditor({ 
+                groupId, 
+                cardIndex, 
+                entryIndex,
+                mapUrl: mapUrl || undefined,
+                variant: variant || undefined
+            });
         });
     }
 
@@ -3501,21 +3534,65 @@
             group.cards = [];
         }
         
-        // Try to find card, create if not found
-        console.log(`🔍 Looking for card at index ${ref.cardIndex} in group "${ref.groupId}"`);
+        // NEW APPROACH: Find card by mapUrl + variant first, fallback to index
+        console.log(`🔍 Looking for card in group "${ref.groupId}"`);
         console.log(`📊 Group has ${group.cards.length} cards`);
+        console.log(`🔎 Search criteria:`, {
+            cardIndex: ref.cardIndex,
+            mapUrl: ref.mapUrl || '(none)',
+            variant: ref.variant || '(none)'
+        });
         
-        let card = group.cards[ref.cardIndex];
+        let card = null;
+        
+        // Strategy 1: Find by mapUrl + variant (most reliable)
+        if(ref.mapUrl && ref.variant) {
+            card = group.cards.find(c => {
+                const cardVariant = detectVariant(c);
+                return (c.mapUrl === ref.mapUrl || (!c.mapUrl && !ref.mapUrl)) && cardVariant === ref.variant;
+            });
+            if(card) {
+                const foundIndex = group.cards.indexOf(card);
+                console.log(`✅ Found card by mapUrl+variant at index ${foundIndex}: "${card.title || 'Untitled'}" (variant: ${ref.variant})`);
+            } else {
+                console.log(`⚠️ Card not found by mapUrl+variant, trying by index...`);
+            }
+        }
+        
+        // Strategy 2: Find by mapUrl only (if variant not provided)
+        if(!card && ref.mapUrl) {
+            card = group.cards.find(c => c.mapUrl === ref.mapUrl);
+            if(card) {
+                const foundIndex = group.cards.indexOf(card);
+                console.log(`✅ Found card by mapUrl at index ${foundIndex}: "${card.title || 'Untitled'}"`);
+            }
+        }
+        
+        // Strategy 3: Fallback to index-based lookup
+        if(!card && ref.cardIndex != null) {
+            card = group.cards[ref.cardIndex];
+            if(card) {
+                console.log(`✅ Found card at index ${ref.cardIndex}: "${card.title || 'Untitled'}" with ${card.entries?.length || 0} entries`);
+            }
+        }
+        
+        // Strategy 4: Create new card if not found
         if(!card) {
-            console.warn(`⚠️ Card at index ${ref.cardIndex} not found, creating it...`);
+            console.warn(`⚠️ Card not found, creating new one...`);
+            if(ref.cardIndex != null && ref.cardIndex >= 0) {
             // Fill up to the required index
             while(group.cards.length <= ref.cardIndex) {
                 group.cards.push({ title: 'New Card', entries: [] });
             }
             card = group.cards[ref.cardIndex];
-            console.log(`✅ Created card at index ${ref.cardIndex}`);
-        } else {
-            console.log(`✅ Found card at index ${ref.cardIndex}: "${card.title || 'Untitled'}" with ${card.entries?.length || 0} entries`);
+                console.log(`✅ Created card at index ${ref.cardIndex}`);
+            } else {
+                // Append new card
+                card = { title: 'New Card', entries: [] };
+                if(ref.mapUrl) card.mapUrl = ref.mapUrl;
+                group.cards.push(card);
+                console.log(`✅ Created new card at end of array (index ${group.cards.length - 1})`);
+            }
         }
         
         // Ensure entries array exists
