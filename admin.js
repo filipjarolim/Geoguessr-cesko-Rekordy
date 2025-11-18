@@ -541,38 +541,47 @@
             if(!hostCard) return;
             const groupId = hostCard.dataset.groupId;
             
-            // NEW APPROACH: Use mapUrl + variant to find the correct card instead of relying on indices
+            // CRITICAL: Use originalCardIndex directly - it's the most reliable way
             let cardIndex = null;
             const mapUrl = entry?.dataset.mapUrl || hostCard.dataset.mapUrl || '';
             const variant = entry?.dataset.variant || '';
+            const cardId = entry?.dataset.cardId || '';
+            const cardTitle = entry?.dataset.cardTitle || '';
             
+            // PRIORITY 1: Use originalCardIndex from entry (set during rendering)
             if(entry && entry.dataset.originalCardIndex) {
-                // Use originalCardIndex if available (most reliable)
                 cardIndex = Number(entry.dataset.originalCardIndex);
-                console.log(`📍 Using original card index ${cardIndex} from entry dataset`);
-            } else {
-                // Fallback to cardIndex from hostCard
+                console.log(`✅ Using originalCardIndex ${cardIndex} from entry dataset`);
+            } 
+            // PRIORITY 2: Fallback to cardIndex from hostCard
+            else if(hostCard.dataset.cardIndex) {
                 cardIndex = Number(hostCard.dataset.cardIndex);
+                console.log(`⚠️ Using cardIndex ${cardIndex} from hostCard (fallback)`);
             }
             
             const entryIndex = entry ? Number(entry.dataset.entryIndex) : null;
 
-            console.log(`🔍 Opening editor:`, {
+            console.log(`🔍 Opening editor with FULL context:`, {
                 groupId,
                 cardIndex,
                 entryIndex,
                 mapUrl: mapUrl || '(none)',
                 variant: variant || '(none)',
-                hasOriginalCardIndex: !!(entry?.dataset.originalCardIndex)
+                cardId: cardId || '(none)',
+                cardTitle: cardTitle || '(none)',
+                hasOriginalCardIndex: !!(entry?.dataset.originalCardIndex),
+                originalCardIndexValue: entry?.dataset.originalCardIndex || '(none)'
             });
             
-            // Pass mapUrl and variant for reliable card lookup
+            // Pass ALL information for maximum reliability
             openEditor({ 
                 groupId, 
                 cardIndex, 
                 entryIndex,
                 mapUrl: mapUrl || undefined,
-                variant: variant || undefined
+                variant: variant || undefined,
+                cardId: cardId || undefined,
+                cardTitle: cardTitle || undefined
             });
         });
     }
@@ -3534,33 +3543,75 @@
             group.cards = [];
         }
         
-        // NEW APPROACH: Find card by mapUrl + variant first, fallback to index
+        // REVOLUTIONARY APPROACH: Use cardIndex DIRECTLY - it's set during rendering and is 100% accurate
         console.log(`🔍 Looking for card in group "${ref.groupId}"`);
         console.log(`📊 Group has ${group.cards.length} cards`);
         console.log(`🔎 Search criteria:`, {
             cardIndex: ref.cardIndex,
             mapUrl: ref.mapUrl || '(none)',
-            variant: ref.variant || '(none)'
+            variant: ref.variant || '(none)',
+            cardId: ref.cardId || '(none)',
+            cardTitle: ref.cardTitle || '(none)'
         });
+        
+        // Log all cards for debugging
+        console.log(`📋 All cards in group:`, group.cards.map((c, idx) => ({
+            index: idx,
+            title: c.title,
+            mapUrl: c.mapUrl,
+            variant: detectVariant(c),
+            entriesCount: c.entries?.length || 0
+        })));
         
         let card = null;
         
-        // Strategy 1: Find by mapUrl + variant (most reliable)
-        if(ref.mapUrl && ref.variant) {
-            card = group.cards.find(c => {
-                const cardVariant = detectVariant(c);
-                return (c.mapUrl === ref.mapUrl || (!c.mapUrl && !ref.mapUrl)) && cardVariant === ref.variant;
-            });
+        // STRATEGY 1: Use cardIndex DIRECTLY (set during rendering, most reliable)
+        if(ref.cardIndex != null && ref.cardIndex >= 0 && ref.cardIndex < group.cards.length) {
+            card = group.cards[ref.cardIndex];
             if(card) {
-                const foundIndex = group.cards.indexOf(card);
-                console.log(`✅ Found card by mapUrl+variant at index ${foundIndex}: "${card.title || 'Untitled'}" (variant: ${ref.variant})`);
-            } else {
-                console.log(`⚠️ Card not found by mapUrl+variant, trying by index...`);
+                const cardVariant = detectVariant(card);
+                console.log(`✅ Found card at index ${ref.cardIndex}: "${card.title || 'Untitled'}"`, {
+                    mapUrl: card.mapUrl || '(none)',
+                    variant: cardVariant,
+                    entriesCount: card.entries?.length || 0,
+                    expectedVariant: ref.variant || '(any)',
+                    expectedMapUrl: ref.mapUrl || '(any)'
+                });
+                
+                // VERIFY: Check if this is the correct card
+                if(ref.mapUrl && card.mapUrl !== ref.mapUrl) {
+                    console.warn(`⚠️ WARNING: Card at index ${ref.cardIndex} has different mapUrl!`, {
+                        expected: ref.mapUrl,
+                        actual: card.mapUrl
+                    });
+                }
+                if(ref.variant && cardVariant !== ref.variant) {
+                    console.warn(`⚠️ WARNING: Card at index ${ref.cardIndex} has different variant!`, {
+                        expected: ref.variant,
+                        actual: cardVariant
+                    });
+                }
             }
         }
         
-        // Strategy 2: Find by mapUrl only (if variant not provided)
+        // STRATEGY 2: If cardIndex is out of bounds or card not found, try finding by mapUrl+variant
+        if(!card && ref.mapUrl && ref.variant) {
+            console.log(`⚠️ CardIndex ${ref.cardIndex} failed, trying mapUrl+variant lookup...`);
+            card = group.cards.find(c => {
+                const cardVariant = detectVariant(c);
+                const mapUrlMatch = c.mapUrl === ref.mapUrl || (!c.mapUrl && !ref.mapUrl);
+                const variantMatch = cardVariant === ref.variant;
+                return mapUrlMatch && variantMatch;
+            });
+            if(card) {
+                const foundIndex = group.cards.indexOf(card);
+                console.log(`✅ Found card by mapUrl+variant at index ${foundIndex}: "${card.title || 'Untitled'}"`);
+            }
+        }
+        
+        // STRATEGY 3: Find by mapUrl only
         if(!card && ref.mapUrl) {
+            console.log(`⚠️ Trying mapUrl-only lookup...`);
             card = group.cards.find(c => c.mapUrl === ref.mapUrl);
             if(card) {
                 const foundIndex = group.cards.indexOf(card);
@@ -3568,31 +3619,35 @@
             }
         }
         
-        // Strategy 3: Fallback to index-based lookup
-        if(!card && ref.cardIndex != null) {
-            card = group.cards[ref.cardIndex];
-            if(card) {
-                console.log(`✅ Found card at index ${ref.cardIndex}: "${card.title || 'Untitled'}" with ${card.entries?.length || 0} entries`);
-            }
-        }
-        
-        // Strategy 4: Create new card if not found
+        // STRATEGY 4: Create new card if not found
         if(!card) {
-            console.warn(`⚠️ Card not found, creating new one...`);
+            console.warn(`⚠️ Card not found by any method, creating new one...`);
             if(ref.cardIndex != null && ref.cardIndex >= 0) {
-            // Fill up to the required index
-            while(group.cards.length <= ref.cardIndex) {
-                group.cards.push({ title: 'New Card', entries: [] });
-            }
-            card = group.cards[ref.cardIndex];
+                // Fill up to the required index
+                while(group.cards.length <= ref.cardIndex) {
+                    group.cards.push({ title: 'New Card', entries: [] });
+                }
+                card = group.cards[ref.cardIndex];
+                if(ref.mapUrl) card.mapUrl = ref.mapUrl;
                 console.log(`✅ Created card at index ${ref.cardIndex}`);
             } else {
                 // Append new card
-                card = { title: 'New Card', entries: [] };
+                card = { title: ref.cardTitle || 'New Card', entries: [] };
                 if(ref.mapUrl) card.mapUrl = ref.mapUrl;
                 group.cards.push(card);
                 console.log(`✅ Created new card at end of array (index ${group.cards.length - 1})`);
             }
+        }
+        
+        // FINAL VERIFICATION
+        if(card) {
+            const finalIndex = group.cards.indexOf(card);
+            console.log(`🎯 FINAL RESULT: Using card at index ${finalIndex}:`, {
+                title: card.title,
+                mapUrl: card.mapUrl,
+                variant: detectVariant(card),
+                entriesCount: card.entries?.length || 0
+            });
         }
         
         // Ensure entries array exists

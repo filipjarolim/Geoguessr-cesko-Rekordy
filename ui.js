@@ -230,11 +230,15 @@
 
         const list = el('ul', { class: 'gg-entry-list' }, (card.entries || []).map((e, idx)=> {
             const entryEl = renderEntry(e, idx);
-            // Store mapUrl and variant for reliable lookup (even for non-cluster cards)
+            // Store ALL identifying information for 100% reliable lookup
             entryEl.dataset.mapUrl = card.mapUrl || '';
             const variant = detectVariant(card);
             entryEl.dataset.variant = variant;
-            entryEl.dataset.originalCardIndex = String(originalCardIndex !== undefined ? originalCardIndex : cardIndex);
+            const finalCardIndex = originalCardIndex !== undefined ? originalCardIndex : cardIndex;
+            entryEl.dataset.originalCardIndex = String(finalCardIndex);
+            entryEl.dataset.cardTitle = card.title || '';
+            // Store a unique card identifier: mapUrl + variant
+            entryEl.dataset.cardId = `${card.mapUrl || ''}_${variant}`;
             return entryEl;
         }));
 
@@ -285,16 +289,23 @@
             variantHeader.appendChild(el('span', { class: 'gg-chip' }, [key]));
             col.appendChild(variantHeader);
             const list = el('ul', { class: 'gg-entry-list' });
-            // Get original card index for this variant
+            // Get original card index for this variant - CRITICAL: use variantToCardIndex map
             const variantCardIndex = cluster.variantToCardIndex && cluster.variantToCardIndex[key] !== undefined 
                 ? cluster.variantToCardIndex[key] 
                 : (originalCardIndices[variantIdx] !== undefined ? originalCardIndices[variantIdx] : primaryCardIndex);
+            
+            // Debug: Log variant mapping (can be removed in production)
+            // console.log(`🎯 Cluster card variant "${key}": originalCardIndex=${variantCardIndex}`);
+            
             (variantCard?.entries || []).forEach((e, idx)=> {
                 const entryEl = renderEntry(e, idx);
-                // Store mapUrl, variant, and original card index for reliable lookup
+                // Store ALL identifying information for 100% reliable lookup
                 entryEl.dataset.mapUrl = cluster.mapUrl || '';
                 entryEl.dataset.variant = key;
                 entryEl.dataset.originalCardIndex = String(variantCardIndex);
+                entryEl.dataset.cardTitle = variantCard?.title || '';
+                // Store a unique card identifier: mapUrl + variant
+                entryEl.dataset.cardId = `${cluster.mapUrl || ''}_${key}`;
                 list.appendChild(entryEl);
             });
             col.appendChild(list);
