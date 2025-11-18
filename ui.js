@@ -110,7 +110,7 @@
 
     function groupCardsByMap(cards){
         const clusters = new Map();
-        (cards || []).forEach((c)=>{
+        (cards || []).forEach((c, originalIndex)=>{
             const key = c.mapUrl || c.title;
             if(!clusters.has(key)) {
                 // Use existing map data if available, otherwise create placeholder
@@ -120,13 +120,17 @@
                     title: mapData?.name || c.title, 
                     map: mapData, 
                     variants: {}, 
-                    order: [] 
+                    order: [],
+                    originalCardIndices: [] // Store original card indices for admin editing
                 });
             }
             const cluster = clusters.get(key);
             const variant = detectVariant(c);
             cluster.variants[variant] = c;
             cluster.order.push(variant);
+            // Store original card index for this variant
+            if(!cluster.originalCardIndices) cluster.originalCardIndices = [];
+            cluster.originalCardIndices.push(originalIndex);
             // Ensure map data is preserved in cluster
             if(c.map && !cluster.map) {
                 cluster.map = c.map;
@@ -193,7 +197,7 @@
         return clustersWithStats.map(({ totalEntries, variantEntryCounts, isEmpty, ...cluster }) => cluster);
     }
 
-    function renderCard(card, groupId, cardIndex){
+    function renderCard(card, groupId, cardIndex, originalCardIndex){
         const map = card.map || {};
         // Remove heroImage background, keep only creator avatar
         const cover = null;
@@ -225,7 +229,7 @@
 
         const article = el('article', { class: `gg-card ${themeClass(card.theme)}` }, [ header, list ]);
         article.dataset.groupId = groupId;
-        article.dataset.cardIndex = String(cardIndex);
+        article.dataset.cardIndex = String(originalCardIndex !== undefined ? originalCardIndex : cardIndex);
         return article;
     }
 
@@ -258,21 +262,32 @@
         const actualVariants = order.filter(k => cluster.variants[k]);
         cols.dataset.variantCount = String(actualVariants.length);
         
-        actualVariants.forEach((key)=>{
+        // Get original card indices for this cluster (use first variant's index as primary)
+        const originalCardIndices = cluster.originalCardIndices || [];
+        const primaryCardIndex = originalCardIndices.length > 0 ? originalCardIndices[0] : clusterIndex;
+        
+        actualVariants.forEach((key, variantIdx)=>{
             const variantCard = cluster.variants[key];
             const col = el('div', { class: 'gg-variant-col' });
             const variantHeader = el('div', { style: { padding: 'var(--space-md) var(--space-lg)', borderBottom: '1px solid rgba(255,255,255,0.1)' } });
             variantHeader.appendChild(el('span', { class: 'gg-chip' }, [key]));
             col.appendChild(variantHeader);
             const list = el('ul', { class: 'gg-entry-list' });
-            (variantCard?.entries || []).forEach((e, idx)=> list.appendChild(renderEntry(e, idx)));
+            // Store original card index for each variant entry
+            const variantCardIndex = originalCardIndices[variantIdx] !== undefined ? originalCardIndices[variantIdx] : primaryCardIndex;
+            (variantCard?.entries || []).forEach((e, idx)=> {
+                const entryEl = renderEntry(e, idx);
+                entryEl.dataset.originalCardIndex = String(variantCardIndex);
+                list.appendChild(entryEl);
+            });
             col.appendChild(list);
             cols.appendChild(col);
         });
 
         const article = el('article', { class: `gg-card gg-card--wide ${themeClass('secondary')}` }, [ header, cols ]);
         article.dataset.groupId = groupId;
-        article.dataset.cardIndex = String(clusterIndex);
+        // Use primary card index (first variant's original index)
+        article.dataset.cardIndex = String(primaryCardIndex);
         return article;
     }
 
@@ -281,7 +296,11 @@
         const clusters = groupCardsByMap(group.cards);
         clusters.forEach((cluster, idx)=>{
             const isCluster = Object.keys(cluster.variants).length > 1;
-            const node = isCluster ? renderClusterCard(cluster, group.id, idx) : renderCard(cluster.variants[Object.keys(cluster.variants)[0]], group.id, idx);
+            const originalCardIndices = cluster.originalCardIndices || [];
+            const primaryCardIndex = originalCardIndices.length > 0 ? originalCardIndices[0] : idx;
+            const node = isCluster 
+                ? renderClusterCard(cluster, group.id, idx) 
+                : renderCard(cluster.variants[Object.keys(cluster.variants)[0]], group.id, idx, primaryCardIndex);
             grid.appendChild(node);
         });
         container.innerHTML = '';

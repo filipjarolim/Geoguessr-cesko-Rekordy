@@ -531,9 +531,15 @@
             const hostCard = card || entry.closest('.gg-card');
             if(!hostCard) return;
             const groupId = hostCard.dataset.groupId;
-            const cardIndex = Number(hostCard.dataset.cardIndex);
+            // Use originalCardIndex from entry if available (for cluster cards), otherwise use cardIndex
+            let cardIndex = Number(hostCard.dataset.cardIndex);
+            if(entry && entry.dataset.originalCardIndex) {
+                cardIndex = Number(entry.dataset.originalCardIndex);
+                console.log(`📍 Using original card index ${cardIndex} from entry (cluster card)`);
+            }
             const entryIndex = entry ? Number(entry.dataset.entryIndex) : null;
 
+            console.log(`🔍 Opening editor: groupId=${groupId}, cardIndex=${cardIndex}, entryIndex=${entryIndex}`);
             openEditor({ groupId, cardIndex, entryIndex });
         });
     }
@@ -3496,19 +3502,38 @@
         }
         
         // Try to find card, create if not found
+        console.log(`🔍 Looking for card at index ${ref.cardIndex} in group "${ref.groupId}"`);
+        console.log(`📊 Group has ${group.cards.length} cards`);
+        
         let card = group.cards[ref.cardIndex];
         if(!card) {
-            console.warn(`Card at index ${ref.cardIndex} not found, creating it...`);
+            console.warn(`⚠️ Card at index ${ref.cardIndex} not found, creating it...`);
             // Fill up to the required index
             while(group.cards.length <= ref.cardIndex) {
                 group.cards.push({ title: 'New Card', entries: [] });
             }
             card = group.cards[ref.cardIndex];
+            console.log(`✅ Created card at index ${ref.cardIndex}`);
+        } else {
+            console.log(`✅ Found card at index ${ref.cardIndex}: "${card.title || 'Untitled'}" with ${card.entries?.length || 0} entries`);
         }
         
         // Ensure entries array exists
         if(!card.entries || !Array.isArray(card.entries)) {
             card.entries = [];
+        }
+        
+        // Validate entryIndex if provided
+        if(ref.entryIndex != null) {
+            if(ref.entryIndex < 0 || ref.entryIndex >= card.entries.length) {
+                console.warn(`⚠️ Entry index ${ref.entryIndex} is out of bounds (card has ${card.entries.length} entries). Will create new entry.`);
+            } else {
+                console.log(`✅ Entry at index ${ref.entryIndex} exists:`, {
+                    player: card.entries[ref.entryIndex]?.player,
+                    playerUrl: card.entries[ref.entryIndex]?.playerUrl,
+                    rank: card.entries[ref.entryIndex]?.rank
+                });
+            }
         }
         
         // Update card mapUrl if resultUrl contains map info (extract from game URL)
