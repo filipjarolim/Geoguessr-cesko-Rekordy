@@ -182,8 +182,101 @@
             } 
         });
         
+        // Add force enrichment button
+        const forceEnrichButton = el('button', {
+            style: {
+                width: '100%',
+                padding: '14px 20px',
+                background: 'linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '12px',
+                fontSize: '16px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                marginBottom: '12px',
+                transition: 'all 0.3s ease',
+                fontFamily: 'Quicksand, sans-serif'
+            },
+            onmouseenter: function(){
+                this.style.transform = 'translateY(-2px)';
+                this.style.boxShadow = '0 6px 20px rgba(255, 107, 53, 0.4)';
+            },
+            onmouseleave: function(){
+                this.style.transform = 'translateY(0)';
+                this.style.boxShadow = 'none';
+            },
+            onclick: async function(){
+                this.disabled = true;
+                this.textContent = '🔄 Enriching all data...';
+                try{
+                    await forceFullEnrichment();
+                    this.textContent = '✅ Enrichment complete!';
+                    this.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)';
+                    setTimeout(() => {
+                        this.textContent = '🚀 Force Full Enrichment';
+                        this.style.background = 'linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)';
+                        this.disabled = false;
+                        window.location.reload();
+                    }, 3000);
+                }catch(e){
+                    this.textContent = '❌ Failed: ' + e.message.substring(0, 30);
+                    this.style.background = 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)';
+                    setTimeout(() => {
+                        this.textContent = '🚀 Force Full Enrichment';
+                        this.style.background = 'linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)';
+                        this.disabled = false;
+                    }, 5000);
+                }
+            }
+        }, ['🚀 Force Full Enrichment']);
+        
+        // Add server-side script button
+        const serverScriptButton = el('button', {
+            style: {
+                width: '100%',
+                padding: '14px 20px',
+                background: 'linear-gradient(135deg, #0b3d91 0%, #1e5bb8 100%)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '12px',
+                fontSize: '16px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                marginBottom: '12px',
+                transition: 'all 0.3s ease',
+                fontFamily: 'Quicksand, sans-serif'
+            },
+            onmouseenter: function(){
+                this.style.transform = 'translateY(-2px)';
+                this.style.boxShadow = '0 6px 20px rgba(11, 61, 145, 0.4)';
+            },
+            onmouseleave: function(){
+                this.style.transform = 'translateY(0)';
+                this.style.boxShadow = 'none';
+            },
+            onclick: function(){
+                const command = 'npm run fetch-images';
+                // Copy to clipboard
+                navigator.clipboard.writeText(command).then(() => {
+                    const originalText = this.textContent;
+                    this.textContent = '✅ Zkopírováno do schránky!';
+                    this.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)';
+                    setTimeout(() => {
+                        this.textContent = originalText;
+                        this.style.background = 'linear-gradient(135deg, #0b3d91 0%, #1e5bb8 100%)';
+                    }, 2000);
+                }).catch(() => {
+                    // Fallback: show alert
+                    alert(`Spusť tento příkaz v terminálu:\n\n${command}\n\nTento script načte všechny chybějící map a player data a převede obrázky na base64.`);
+                });
+            }
+        }, ['🖼️ Server-side: Načti obrázky (npm run fetch-images)']);
+        
         function updateAdminStatus(){
             const adminData = localStorage.getItem('gg_admin_data');
+            const hasToken = !!(localStorage.getItem('gg_pat') || (typeof window !== 'undefined' && window.GITHUB_TOKEN));
+            
             if(adminData){
                 try{
                     const data = JSON.parse(adminData);
@@ -193,25 +286,128 @@
                         <span style="font-size: 18px;">✅</span>
                         <span style="flex: 1;">Přihlášen jako Admin</span>
                         <span style="font-size: 12px; opacity: 0.8;">${hoursLeft}h</span>
+                        ${hasToken ? '<span style="font-size: 12px; opacity: 0.6; margin-left: 8px;">🔑 Token OK</span>' : '<span style="font-size: 12px; opacity: 0.6; margin-left: 8px; color: #dc3545;">⚠️ No Token</span>'}
                     `;
                 }catch(e){
-                    adminStatus.innerHTML = '<span style="font-size: 18px;">✅</span><span>Admin session active</span>';
+                    adminStatus.innerHTML = `<span style="font-size: 18px;">✅</span><span>Admin session active</span>${hasToken ? '<span style="font-size: 12px; opacity: 0.6; margin-left: 8px;">🔑 Token OK</span>' : '<span style="font-size: 12px; opacity: 0.6; margin-left: 8px; color: #dc3545;">⚠️ No Token</span>'}`;
                 }
+            } else {
+                adminStatus.innerHTML = `<span style="font-size: 18px;">⚠️</span><span>Not logged in</span>${hasToken ? '<span style="font-size: 12px; opacity: 0.6; margin-left: 8px;">🔑 Token OK</span>' : '<span style="font-size: 12px; opacity: 0.6; margin-left: 8px; color: #dc3545;">⚠️ No Token</span>'}`;
             }
         }
         updateAdminStatus();
+        
+        // Check token availability and show warning if missing
+        const hasToken = !!(localStorage.getItem('gg_pat') || (typeof window !== 'undefined' && window.GITHUB_TOKEN));
+        if(!hasToken){
+            const tokenWarning = el('div', {
+                style: {
+                    padding: '12px 16px',
+                    background: 'linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%)',
+                    borderRadius: '12px',
+                    fontSize: '13px',
+                    color: '#856404',
+                    marginBottom: '16px',
+                    fontWeight: '500',
+                    border: '1px solid #ffc107'
+                }
+            });
+            tokenWarning.innerHTML = `
+                ⚠️ <strong>GitHub token not found!</strong><br>
+                Run: <code style="background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 4px;">npm run inject-token</code> to load from .env<br>
+                Or set <code style="background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 4px;">window.GITHUB_TOKEN</code> in console
+            `;
+            card.insertBefore(tokenWarning, forceEnrichButton);
+        }
 
-        // Info text
+        // Info text - improved with better instructions
         const infoText = el('div', {
             style: {
                 fontSize: '14px',
                 color: '#666',
-                marginBottom: '24px',
+                marginBottom: '20px',
                 lineHeight: '1.6',
-                textAlign: 'center'
+                padding: '16px',
+                background: 'linear-gradient(135deg, #f0f7ff 0%, #e3f2fd 100%)',
+                borderRadius: '12px',
+                border: '1px solid rgba(11,61,145,0.15)'
             }
         });
-        infoText.innerHTML = 'Pravým kliknutím na libovolný rekord můžete ho upravit nebo přidat nový.';
+        infoText.innerHTML = `
+            <div style="font-weight: 600; color: #0b3d91; margin-bottom: 8px;">💡 Jak používat editor:</div>
+            <div style="font-size: 13px;">
+                • <strong>Pravým kliknutím</strong> na libovolný rekord můžete ho upravit nebo přidat nový<br>
+                • <strong>Vložte URL hry</strong> - automaticky se zpracuje a vyplní všechna pole<br>
+                • <strong>Uživatel se automaticky najde</strong> nebo přidá z URL<br>
+                • <strong>Klikněte "Uložit"</strong> pro finální uložení
+            </div>
+        `;
+        
+        // Quick actions section
+        const quickActionsSection = el('div', {
+            style: {
+                marginTop: '24px',
+                padding: '20px',
+                background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
+                borderRadius: '12px',
+                border: '1px solid rgba(11,61,145,0.1)'
+            }
+        });
+        
+        const quickActionsTitle = el('div', {
+            style: {
+                fontSize: '15px',
+                fontWeight: '700',
+                color: '#0b3d91',
+                marginBottom: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+            }
+        }, ['⚡ Rychlé akce']);
+        quickActionsSection.appendChild(quickActionsTitle);
+        
+        const quickActionsGrid = el('div', {
+            style: {
+                display: 'grid',
+                gridTemplateColumns: '1fr',
+                gap: '10px'
+            }
+        });
+        
+        // Refresh data button
+        const refreshDataBtn = el('button', {
+            style: {
+                padding: '10px 16px',
+                fontSize: '14px',
+                fontWeight: '600',
+                background: '#fff',
+                color: '#0b3d91',
+                border: '2px solid #0b3d91',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                textAlign: 'left',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px'
+            },
+            onmouseenter: function(){
+                this.style.background = '#0b3d91';
+                this.style.color = '#fff';
+            },
+            onmouseleave: function(){
+                this.style.background = '#fff';
+                this.style.color = '#0b3d91';
+            },
+            onclick: () => {
+                window.dispatchEvent(new Event('gg-refresh-data'));
+                showSuccessNotification('🔄 Data se obnovují...');
+            }
+        }, ['🔄 Obnovit data na stránce']);
+        
+        quickActionsGrid.appendChild(refreshDataBtn);
+        quickActionsSection.appendChild(quickActionsGrid);
 
         // Logout button
         const logoutBtn = el('button', { 
@@ -282,8 +478,35 @@
         card.appendChild(closeBtn);
         card.appendChild(header);
         card.appendChild(adminStatus);
-        card.appendChild(infoText);
-        card.appendChild(logoutBtn);
+        
+        // Quick actions section
+        card.appendChild(quickActionsSection);
+        
+        // Main actions
+        const mainActionsSection = el('div', {
+            style: {
+                marginTop: '20px',
+                paddingTop: '20px',
+                borderTop: '2px solid rgba(11,61,145,0.1)'
+            }
+        });
+        
+        const mainActionsTitle = el('div', {
+            style: {
+                fontSize: '15px',
+                fontWeight: '700',
+                color: '#0b3d91',
+                marginBottom: '16px'
+            }
+        }, ['🔧 Hlavní akce']);
+        mainActionsSection.appendChild(mainActionsTitle);
+        
+        mainActionsSection.appendChild(forceEnrichButton);
+        mainActionsSection.appendChild(serverScriptButton);
+        mainActionsSection.appendChild(infoText);
+        mainActionsSection.appendChild(logoutBtn);
+        
+        card.appendChild(mainActionsSection);
         
         root.appendChild(card);
     }
@@ -375,22 +598,119 @@
     let enrichmentPromise = null; // For enrichUsersWithProfiles()
     let enrichmentProgress = { loaded: 0, total: 0, failed: [] };
     
-    async function loadUsers(){
+    // Cache keys
+    const CACHE_KEYS = {
+        USERS: 'gg_admin_users_cache',
+        USERS_TIMESTAMP: 'gg_admin_users_timestamp',
+        USER_PROFILES: 'gg_admin_user_profiles_cache',
+        CACHE_DURATION: 5 * 60 * 1000 // 5 minutes
+    };
+    
+    // Load users from cache or fetch
+    function getCachedUsers(){
+        try{
+            const cached = localStorage.getItem(CACHE_KEYS.USERS);
+            const timestamp = localStorage.getItem(CACHE_KEYS.USERS_TIMESTAMP);
+            if(cached && timestamp){
+                const age = Date.now() - parseInt(timestamp);
+                if(age < CACHE_KEYS.CACHE_DURATION){
+                    return JSON.parse(cached);
+                }
+            }
+        }catch(e){
+            console.warn('Failed to load cached users:', e);
+        }
+        return null;
+    }
+    
+    function saveUsersToCache(users){
+        try{
+            localStorage.setItem(CACHE_KEYS.USERS, JSON.stringify(users));
+            localStorage.setItem(CACHE_KEYS.USERS_TIMESTAMP, String(Date.now()));
+        }catch(e){
+            console.warn('Failed to cache users:', e);
+        }
+    }
+    
+    function getCachedUserProfile(url){
+        try{
+            const cached = localStorage.getItem(CACHE_KEYS.USER_PROFILES);
+            if(cached){
+                const profiles = JSON.parse(cached);
+                return profiles[url] || null;
+            }
+        }catch(e){
+            console.warn('Failed to load cached profile:', e);
+        }
+        return null;
+    }
+    
+    function saveUserProfileToCache(url, profile){
+        try{
+            const cached = localStorage.getItem(CACHE_KEYS.USER_PROFILES);
+            const profiles = cached ? JSON.parse(cached) : {};
+            profiles[url] = {
+                ...profile,
+                cachedAt: Date.now()
+            };
+            localStorage.setItem(CACHE_KEYS.USER_PROFILES, JSON.stringify(profiles));
+        }catch(e){
+            console.warn('Failed to cache profile:', e);
+        }
+    }
+    
+    async function loadUsers(forceRefresh = false){
         // Prevent multiple simultaneous loads
-        if(usersLoadingPromise) return usersLoadingPromise;
+        if(usersLoadingPromise && !forceRefresh) return usersLoadingPromise;
+        
+        // Try cache first
+        if(!forceRefresh){
+            const cached = getCachedUsers();
+            if(cached){
+                usersList = cached;
+                console.log(`✅ Loaded ${usersList.length} users from cache`);
+                return Promise.resolve(usersList);
+            }
+        }
         
         usersLoadingPromise = (async () => {
             try{
-                const res = await fetch('data/users.json?cb=' + Date.now());
+                // Try to fetch with cache-busting, but also try without if that fails
+                let res;
+                try{
+                    res = await fetch('data/users.json?cb=' + Date.now(), {
+                        cache: 'no-store',
+                        headers: {
+                            'Cache-Control': 'no-cache'
+                        }
+                    });
+                }catch(e){
+                    // If cache-busting fails, try without
+                    res = await fetch('data/users.json');
+                }
+                
                 if(!res.ok){
                     throw new Error(`Failed to fetch users.json: ${res.status} ${res.statusText}`);
                 }
                 const data = await res.json();
                 usersList = Array.isArray(data.users) ? data.users : [];
+                
+                // Save to cache
+                saveUsersToCache(usersList);
+                
                 usersLoadingPromise = null;
+                console.log(`✅ Loaded ${usersList.length} users from server`);
                 return usersList;
             }catch(e){
                 console.warn('Failed to load users.json:', e);
+                // Try to use cache even if expired
+                const cached = getCachedUsers();
+                if(cached){
+                    usersList = cached;
+                    console.log(`⚠️ Using expired cache (${usersList.length} users)`);
+                    usersLoadingPromise = null;
+                    return usersList;
+                }
                 usersList = [];
                 usersLoadingPromise = null;
                 return [];
@@ -400,8 +720,184 @@
         return usersLoadingPromise;
     }
     
-    async function fetchUserProfile(url, retries = 1){
+    // Multiple CORS proxy services for rotation to bypass rate limits
+    // Comprehensive list of proxy services with fallbacks
+    // Note: Many free proxies are unreliable. We use multiple strategies.
+    const PROXY_SERVICES = [
+        // Primary proxies (most reliable)
+        (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+        (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+        (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+        // Alternative proxies
+        (url) => `https://api.corsproxy.io/?${encodeURIComponent(url)}`,
+        (url) => `https://proxy.cors.sh/${encodeURIComponent(url)}`,
+        (url) => `https://cors.bridged.cc/${encodeURIComponent(url)}`,
+        // Additional fallbacks (may be less reliable)
+        (url) => `https://yacdn.org/proxy/${encodeURIComponent(url)}`,
+        (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}&callback=`,
+        // Try different allorigins endpoints
+        (url) => `https://allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    ];
+    let currentProxyIndex = 0;
+    let workingProxyIndex = 0; // Track which proxy works, prefer it
+    const failedProxies = new Set(); // Track permanently failed proxies
+    
+    async function fetchWithProxy(url, retries = 5){
+        let lastError;
+        const triedProxies = new Set();
+        
+        // Start with the last working proxy if available
+        let startIndex = workingProxyIndex % PROXY_SERVICES.length;
+        
+        // Try each proxy service multiple times before giving up
+        const maxAttempts = Math.max((retries + 1) * 2, PROXY_SERVICES.length * 3);
+        
+        for(let attempt = 0; attempt < maxAttempts; attempt++){
+            // Prefer working proxy, then rotate
+            let proxyIndex;
+            if(attempt === 0 && workingProxyIndex < PROXY_SERVICES.length && !failedProxies.has(workingProxyIndex)){
+                // Start with known working proxy
+                proxyIndex = workingProxyIndex;
+            } else {
+                // Rotate through all proxies, skipping failed ones
+                let attempts = 0;
+                do {
+                    proxyIndex = (startIndex + attempt + attempts) % PROXY_SERVICES.length;
+                    attempts++;
+                    if(attempts > PROXY_SERVICES.length) break; // Prevent infinite loop
+                } while(failedProxies.has(proxyIndex) && attempts <= PROXY_SERVICES.length);
+            }
+            
+            const proxyFn = PROXY_SERVICES[proxyIndex];
+            
+            // Skip permanently failed proxies
+            if(failedProxies.has(proxyIndex)) {
+                continue;
+            }
+            
+            try{
+                const proxyUrl = proxyFn(url);
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout for images
+                
+                // Try fetch with retry on network errors
+                let res;
+                let fetchAttempts = 0;
+                const maxFetchAttempts = 3;
+                let currentTimeoutId = timeoutId;
+                
+                while(fetchAttempts < maxFetchAttempts){
+                    try{
+                        res = await fetch(proxyUrl, {
+                            signal: controller.signal,
+                            headers: {
+                                'Accept': 'image/*, application/json, text/html, */*',
+                                // Don't include User-Agent - some proxies don't allow custom headers
+                            },
+                            mode: 'cors',
+                            credentials: 'omit'
+                        });
+                        clearTimeout(currentTimeoutId);
+                        break; // Success, exit retry loop
+                    }catch(fetchError){
+                        fetchAttempts++;
+                        clearTimeout(currentTimeoutId);
+                        if(fetchAttempts >= maxFetchAttempts){
+                            throw fetchError; // Re-throw if all attempts failed
+                        }
+                        // Wait before retry (exponential backoff)
+                        await new Promise(resolve => setTimeout(resolve, 1000 * fetchAttempts));
+                        // Create new timeout for retry
+                        currentTimeoutId = setTimeout(() => controller.abort(), 20000);
+                    }
+                }
+                
+                if(res.status === 429){
+                    // Rate limited - wait longer and try next proxy
+                    const retryAfter = res.headers.get('Retry-After');
+                    const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : Math.min((attempt + 1) * 8000, 30000);
+                    console.warn(`Proxy ${proxyIndex} rate limited, waiting ${waitTime/1000}s...`);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                    continue;
+                }
+                
+                if(!res.ok){
+                    // Mark as failed if 403, 500, or other permanent errors
+                    if(res.status === 403 || res.status === 500){
+                        failedProxies.add(proxyIndex);
+                        console.warn(`Proxy ${proxyIndex} permanently failed (${res.status}), marking as failed`);
+                    }
+                    throw new Error(`HTTP ${res.status}`);
+                }
+                
+                // Success! Remember this working proxy for next time
+                workingProxyIndex = proxyIndex;
+                // Remove from failed list if it was there
+                failedProxies.delete(proxyIndex);
+                return res;
+            }catch(e){
+                lastError = e;
+                triedProxies.add(proxyIndex);
+                
+                if(e.name === 'AbortError'){
+                    console.warn(`Proxy ${proxyIndex} timeout (attempt ${attempt + 1}/${maxAttempts})`);
+                }else if(e.message && (e.message.includes('429') || e.message.includes('rate limit'))){
+                    console.warn(`Proxy ${proxyIndex} rate limited (attempt ${attempt + 1}/${maxAttempts})`);
+                    await new Promise(resolve => setTimeout(resolve, Math.min((attempt + 1) * 8000, 30000)));
+                }else if(e.message && (e.message.includes('hostname') || e.message.includes('403') || e.message.includes('Load failed') || e.message.includes('network connection') || e.message.includes('Failed to fetch') || e.name === 'TypeError')){
+                    // Mark as failed for permanent errors
+                    const isPermanentError = e.message.includes('hostname') || 
+                                           e.message.includes('Load failed') || 
+                                           e.message.includes('network connection') ||
+                                           e.message.includes('Failed to fetch') ||
+                                           (e.name === 'TypeError' && e.message.includes('fetch'));
+                    
+                    if(isPermanentError){
+                        failedProxies.add(proxyIndex);
+                        console.warn(`Proxy ${proxyIndex} permanently failed (${e.message || e.name}), marking as failed`);
+                    } else {
+                        console.warn(`Proxy ${proxyIndex} failed (${e.message}), trying next...`);
+                    }
+                    // Don't wait for DNS/network errors, try next immediately
+                }else{
+                    console.warn(`Proxy ${proxyIndex} failed (attempt ${attempt + 1}/${maxAttempts}):`, e.message || e.name);
+                }
+                
+                // Exponential backoff, but shorter for DNS/network errors
+                const isNetworkError = e.message?.includes('hostname') || 
+                                      e.message?.includes('Load failed') || 
+                                      e.message?.includes('network connection') ||
+                                      e.message?.includes('Failed to fetch') ||
+                                      (e.name === 'TypeError' && e.message?.includes('fetch'));
+                
+                if(attempt < maxAttempts - 1 && !isNetworkError){
+                    const backoffTime = Math.min(3000 * Math.pow(1.5, attempt), 10000);
+                    await new Promise(resolve => setTimeout(resolve, backoffTime));
+                } else if(isNetworkError && attempt < maxAttempts - 1){
+                    // For network errors, wait a bit before trying next proxy
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+            }
+        }
+        
+        throw new Error(`All proxies failed after ${maxAttempts} attempts. Last error: ${lastError?.message || 'Unknown'}`);
+    }
+    
+    async function fetchUserProfile(url, retries = 1, useCache = true){
         try{
+            // Check cache first
+            if(useCache){
+                const cached = getCachedUserProfile(url);
+                if(cached){
+                    const cacheAge = Date.now() - (cached.cachedAt || 0);
+                    // Use cache if less than 24 hours old
+                    if(cacheAge < 24 * 60 * 60 * 1000){
+                        console.log(`✅ Using cached profile for ${url}`);
+                        return { name: cached.name, avatarUrl: cached.avatarUrl };
+                    }
+                }
+            }
+            
             // Extract user ID from URL
             const userIdMatch = url.match(/\/user\/([a-z0-9]+)/i);
             if(!userIdMatch) return null;
@@ -411,42 +907,26 @@
             for(let attempt = 0; attempt <= retries; attempt++){
                 try{
                     const apiUrl = `https://www.geoguessr.com/api/v3/users/${userId}`;
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
-                    
-                    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`, {
-                        signal: controller.signal
-                    });
-                    clearTimeout(timeoutId);
-                    
-                    // Handle rate limiting
-                    if(res.status === 429){
-                        const retryAfter = parseInt(res.headers.get('Retry-After') || '60');
-                        if(attempt < retries){
-                            console.warn(`Rate limited, waiting ${retryAfter}s before retry...`);
-                            await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
-                            continue;
-                        }
-                        throw new Error('Rate limited');
-                    }
+                    const res = await fetchWithProxy(apiUrl, 2);
                     
                     if(res.ok){
                         const userData = await res.json();
                         if(userData && userData.nick){
                             const avatarPath = userData.fullBodyPin || userData.pin?.url || null;
-                            return { 
+                            const profile = { 
                                 name: userData.nick, 
                                 avatarUrl: avatarPath ? `https://www.geoguessr.com/images/resize:auto:200:200/gravity:ce/plain/${avatarPath}` : null 
                             };
+                            
+                            // Save to cache
+                            saveUserProfileToCache(url, profile);
+                            
+                            return profile;
                         }
                     }
                 }catch(apiError){
-                    if(apiError.message === 'Rate limited' || (apiError.message && apiError.message.includes('429'))){
-                        // Rate limited - don't retry immediately
-                        throw apiError;
-                    }
                     if(attempt < retries && apiError.name !== 'AbortError'){
-                        await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1))); // Exponential backoff
+                        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1))); // Exponential backoff
                         continue;
                     }
                     if(apiError.name === 'AbortError'){
@@ -463,10 +943,15 @@
                 const user = data?.props?.pageProps?.user;
                 if(user && user.nick){
                     const avatarPath = user.avatar?.fullBodyPath || user.pin?.path || user.fullBodyPin || null;
-                    return { 
+                    const profile = { 
                         name: user.nick, 
                         avatarUrl: avatarPath ? `https://www.geoguessr.com/images/resize:auto:200:200/gravity:ce/plain/${avatarPath}` : null 
                     };
+                    
+                    // Save to cache
+                    saveUserProfileToCache(url, profile);
+                    
+                    return profile;
                 }
             }catch(htmlError){
                 console.warn('HTML parsing also failed:', htmlError);
@@ -491,15 +976,34 @@
             enrichmentProgress = { loaded: 0, total: usersToEnrich.length, failed: [] };
             console.log(`Loading profiles for ${usersToEnrich.length} users...`);
             
-            // Load in smaller batches with longer delays to avoid rate limits
-            const batchSize = 2; // Reduced from 8 to 2 to avoid rate limits
+            // Load in parallel batches with smart rate limiting
+            const batchSize = 5; // Increased batch size for better performance
             let hasUpdates = false;
             
-            for(let i = 0; i < usersToEnrich.length; i += batchSize){
-                const batch = usersToEnrich.slice(i, i + batchSize);
+            // Pre-check cache to skip already cached users
+            const usersNeedingFetch = usersToEnrich.filter(user => {
+                const cached = getCachedUserProfile(user.url);
+                if(cached){
+                    const cacheAge = Date.now() - (cached.cachedAt || 0);
+                    if(cacheAge < 24 * 60 * 60 * 1000){
+                        // Use cached data
+                        user.name = cached.name;
+                        user.avatarUrl = cached.avatarUrl;
+                        enrichmentProgress.loaded++;
+                        if(onProgress) onProgress(enrichmentProgress);
+                        return false; // Skip fetching
+                    }
+                }
+                return true; // Need to fetch
+            });
+            
+            console.log(`📊 ${usersNeedingFetch.length} users need fetching, ${usersToEnrich.length - usersNeedingFetch.length} loaded from cache`);
+            
+            for(let i = 0; i < usersNeedingFetch.length; i += batchSize){
+                const batch = usersNeedingFetch.slice(i, i + batchSize);
                 const results = await Promise.allSettled(batch.map(async (user) => {
                     try{
-                        const profile = await fetchUserProfile(user.url, 1); // Reduced retries
+                        const profile = await fetchUserProfile(user.url, 1, false); // Don't use cache (already checked)
                         if(profile && (profile.name !== user.name || profile.avatarUrl !== user.avatarUrl)){
                             user.name = profile.name;
                             user.avatarUrl = profile.avatarUrl;
@@ -522,9 +1026,9 @@
                     }
                 }));
                 
-                // Longer delay between batches to avoid rate limits
-                if(i + batchSize < usersToEnrich.length){
-                    await new Promise(resolve => setTimeout(resolve, 3000)); // Increased to 3 seconds
+                // Shorter delay between batches (cache reduces load)
+                if(i + batchSize < usersNeedingFetch.length){
+                    await new Promise(resolve => setTimeout(resolve, 1500)); // Reduced to 1.5 seconds
                 }
             }
             
@@ -540,19 +1044,81 @@
                     const token = localStorage.getItem('gg_pat') || (typeof window !== 'undefined' && window.GITHUB_TOKEN) || '';
                     
                     if(token){
-                        async function ghGet(path){
-                            const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`;
-                            const r = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' } });
-                            if(!r.ok) throw new Error(`GET ${path} ${r.status}`);
+                        async function ghGet(path, retries = 3){
+                            const encodedPath = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
+                            const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${branch}`;
+                            let lastError;
+                            for(let attempt = 0; attempt <= retries; attempt++){
+                                try{
+                                    if(attempt > 0){
+                                        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+                                        await new Promise(resolve => setTimeout(resolve, delay));
+                                    }
+                                    const r = await fetch(url, { 
+                                        headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' },
+                                        cache: attempt === 0 ? 'default' : 'no-store'
+                                    });
+                                    if(r.status === 429){
+                                        const waitTime = 60000;
+                                        await new Promise(resolve => setTimeout(resolve, waitTime));
+                                        continue;
+                                    }
+                                    if(!r.ok){
+                                        lastError = new Error(`GET ${path} ${r.status}`);
+                                        if(r.status === 404 || r.status === 401 || attempt >= retries) throw lastError;
+                                        continue;
+                                    }
                             return await r.json();
+                                }catch(e){
+                                    lastError = e;
+                                    if(attempt < retries && e.message && !e.message.includes('404') && !e.message.includes('401')) continue;
+                                    throw e;
+                                }
+                            }
+                            throw lastError || new Error('GitHub GET failed');
                         }
                         
-                        async function ghPut(path, content, sha, message){
-                            const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+                        async function ghPut(path, content, sha, message, retries = 3){
+                            const encodedPath = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
+                            const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}`;
                             const body = { message, content: base64Encode(content), branch, ...(sha ? { sha } : {}) };
-                            const r = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
-                            if(!r.ok) throw new Error(`PUT ${path} ${r.status}`);
+                            let lastError;
+                            for(let attempt = 0; attempt <= retries; attempt++){
+                                try{
+                                    if(attempt > 0){
+                                        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+                                        await new Promise(resolve => setTimeout(resolve, delay));
+                                        if(sha && attempt > 0){
+                                            try{
+                                                const current = await ghGet(path, 1);
+                                                body.sha = current.sha;
+                                            }catch(_){}
+                                        }
+                                    }
+                                    const r = await fetch(url, { 
+                                        method: 'PUT', 
+                                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' },
+                                        body: JSON.stringify(body)
+                                    });
+                                    if(r.status === 429){
+                                        const waitTime = 60000;
+                                        await new Promise(resolve => setTimeout(resolve, waitTime));
+                                        continue;
+                                    }
+                                    if(!r.ok){
+                                        lastError = new Error(`PUT ${path} ${r.status}`);
+                                        if(r.status === 401 || r.status === 404 || (r.status === 409 && attempt >= retries) || attempt >= retries) throw lastError;
+                                        if(r.status === 409) continue; // Retry on conflict
+                                        continue;
+                                    }
                             return await r.json();
+                                }catch(e){
+                                    lastError = e;
+                                    if(attempt < retries && e.message && !e.message.includes('401') && !e.message.includes('404')) continue;
+                                    throw e;
+                                }
+                            }
+                            throw lastError || new Error('GitHub PUT failed');
                         }
                         
                         let base;
@@ -562,7 +1128,9 @@
                             base = { sha: null };
                         }
                         
-                        await ghPut('data/users.json', JSON.stringify({ users: usersList }, null, 2), base.sha, 'chore(admin): enrich user profiles');
+                        await ghPut('data/users.json', JSON.stringify({ users: usersList }, null, 2), base.sha, 'chore(admin): enrich user profiles', 3);
+                        // Invalidate cache after saving
+                        saveUsersToCache(usersList);
                         console.log('✅ User profiles saved to GitHub');
                     }
                 }catch(e){
@@ -594,19 +1162,81 @@
             const branch = DEFAULT_BRANCH;
             const token = localStorage.getItem('gg_pat') || (typeof window !== 'undefined' && window.GITHUB_TOKEN) || '';
             
-            async function ghGet(path){
-                const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`;
-                const r = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' } });
-                if(!r.ok) throw new Error(`GET ${path} ${r.status}`);
+            async function ghGet(path, retries = 3){
+                const encodedPath = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
+                const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${branch}`;
+                let lastError;
+                for(let attempt = 0; attempt <= retries; attempt++){
+                    try{
+                        if(attempt > 0){
+                            const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                        }
+                        const r = await fetch(url, { 
+                            headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' },
+                            cache: attempt === 0 ? 'default' : 'no-store'
+                        });
+                        if(r.status === 429){
+                            const waitTime = 60000;
+                            await new Promise(resolve => setTimeout(resolve, waitTime));
+                            continue;
+                        }
+                        if(!r.ok){
+                            lastError = new Error(`GET ${path} ${r.status}`);
+                            if(r.status === 404 || r.status === 401 || attempt >= retries) throw lastError;
+                            continue;
+                        }
                 return await r.json();
+                    }catch(e){
+                        lastError = e;
+                        if(attempt < retries && e.message && !e.message.includes('404') && !e.message.includes('401')) continue;
+                        throw e;
+                    }
+                }
+                throw lastError || new Error('GitHub GET failed');
             }
             
-            async function ghPut(path, content, sha, message){
-                const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+            async function ghPut(path, content, sha, message, retries = 3){
+                const encodedPath = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
+                const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}`;
                 const body = { message, content: base64Encode(content), branch, ...(sha ? { sha } : {}) };
-                const r = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
-                if(!r.ok) throw new Error(`PUT ${path} ${r.status}`);
+                let lastError;
+                for(let attempt = 0; attempt <= retries; attempt++){
+                    try{
+                        if(attempt > 0){
+                            const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                            if(sha && attempt > 0){
+                                try{
+                                    const current = await ghGet(path, 1);
+                                    body.sha = current.sha;
+                                }catch(_){}
+                            }
+                        }
+                        const r = await fetch(url, { 
+                            method: 'PUT', 
+                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' },
+                            body: JSON.stringify(body)
+                        });
+                        if(r.status === 429){
+                            const waitTime = 60000;
+                            await new Promise(resolve => setTimeout(resolve, waitTime));
+                            continue;
+                        }
+                        if(!r.ok){
+                            lastError = new Error(`PUT ${path} ${r.status}`);
+                            if(r.status === 401 || r.status === 404 || (r.status === 409 && attempt >= retries) || attempt >= retries) throw lastError;
+                            if(r.status === 409) continue; // Retry on conflict
+                            continue;
+                        }
                 return await r.json();
+                    }catch(e){
+                        lastError = e;
+                        if(attempt < retries && e.message && !e.message.includes('401') && !e.message.includes('404')) continue;
+                        throw e;
+                    }
+                }
+                throw lastError || new Error('GitHub PUT failed');
             }
             
             let base;
@@ -616,7 +1246,9 @@
                 base = { sha: null };
             }
             
-            await ghPut('data/users.json', JSON.stringify({ users: usersList }, null, 2), base.sha, 'chore(admin): add user');
+            await ghPut('data/users.json', JSON.stringify({ users: usersList }, null, 2), base.sha, 'chore(admin): add user', 3);
+            // Invalidate cache after saving
+            saveUsersToCache(usersList);
             return newUser;
         }catch(e){
             console.error('Failed to save user:', e);
@@ -634,9 +1266,10 @@
         
         const statusDiv = el('div', { style: { marginBottom: '16px', padding: '12px 16px', borderRadius: '10px', fontSize: '14px', display: 'none', transition: 'all 0.3s ease', fontWeight: '500', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' } });
         
-        // Main input: game URL + optional text
+        // Main input: game URL + optional text with auto-processing
+        let autoProcessTimeout = null;
         const mainInput = el('textarea', { 
-            placeholder: 'Paste game URL + optional info\nExample: https://www.geoguessr.com/game/TGxYAZhOGxOvuHgb AI Generated World NMPZ 23907', 
+            placeholder: 'Vložte URL hry (automaticky se zpracuje)\nPříklad: https://www.geoguessr.com/game/TGxYAZhOGxOvuHgb AI Generated World NMPZ 23907', 
             style: { 
                 padding: '14px', 
                 width: '100%', 
@@ -650,8 +1283,199 @@
                 background: '#fff'
             },
             onfocus: function(){ this.style.borderColor = '#0b3d91'; },
-            onblur: function(){ this.style.borderColor = '#e0e0e0'; }
+            onblur: function(){ this.style.borderColor = '#e0e0e0'; },
+            oninput: function(){
+                // Auto-process after user stops typing (debounce)
+                clearTimeout(autoProcessTimeout);
+                const inputValue = this.value.trim();
+                if(inputValue && inputValue.includes('geoguessr.com/game/')){
+                    autoProcessTimeout = setTimeout(async () => {
+                        await autoProcessInput();
+                    }, 1000); // Wait 1 second after user stops typing
+                }
+            }
         });
+        
+        // Auto-process function
+        async function autoProcessInput(){
+            const inputText = mainInput.value.trim();
+            if(!inputText || !inputText.includes('geoguessr.com/game/')) return;
+            
+            try{
+                statusDiv.style.display = 'block';
+                statusDiv.style.background = '#e3f2fd';
+                statusDiv.style.color = '#1565c0';
+                statusDiv.textContent = '🔄 Automatické zpracování...';
+                
+                const data = await parseAndFetchGameData(inputText);
+                
+                if(data.error){
+                    statusDiv.style.background = '#fff3cd';
+                    statusDiv.style.color = '#856404';
+                    statusDiv.textContent = '⚠️ ' + data.error;
+                    return;
+                }
+                
+                // Auto-fill all fields
+                if(data.rank) rank.value = data.rank;
+                if(data.resultLabel) resultLabel.value = data.resultLabel;
+                if(data.resultUrl) resultUrl.value = data.resultUrl;
+                
+                // Auto-match or auto-add user
+                if(data.playerUrl){
+                    let matchedUser = usersList.find(u => u.url === data.playerUrl);
+                    
+                    if(!matchedUser){
+                        // User not in list - try to add automatically
+                        statusDiv.textContent = '👤 Přidávám nového uživatele...';
+                        try{
+                            const newUser = await addUser(data.playerUrl);
+                            if(newUser){
+                                await loadUsers();
+                                matchedUser = usersList.find(u => u.url === data.playerUrl);
+                            }
+                        }catch(e){
+                            console.warn('Failed to auto-add user:', e);
+                        }
+                    }
+                    
+                    if(matchedUser){
+                        selectedUserUrl = matchedUser.url;
+                        // Update dropdown button
+                        userSelectButton.innerHTML = '';
+                        if(matchedUser.avatarUrl){
+                            userSelectButton.appendChild(el('img', { 
+                                src: matchedUser.avatarUrl, 
+                                style: { width: '28px', height: '28px', borderRadius: '4px', objectFit: 'cover' },
+                                alt: ''
+                            }));
+                        }else{
+                            userSelectButton.appendChild(el('div', { 
+                                style: { width: '28px', height: '28px', borderRadius: '4px', background: '#e0e0e0', flexShrink: 0 }
+                            }));
+                        }
+                        userSelectButton.appendChild(el('span', {}, [matchedUser.name || matchedUser.url]));
+                        
+                        // Auto-enrich user if needed
+                        if(!matchedUser.name || !matchedUser.avatarUrl){
+                            statusDiv.textContent = '📥 Načítám profil uživatele...';
+                            const userInfo = await fetchUserProfile(matchedUser.url);
+                            if(userInfo){
+                                matchedUser.name = userInfo.name;
+                                matchedUser.avatarUrl = userInfo.avatarUrl;
+                                updateUserDropdown();
+                                // Update button again
+                                userSelectButton.innerHTML = '';
+                                if(matchedUser.avatarUrl){
+                                    userSelectButton.appendChild(el('img', { 
+                                        src: matchedUser.avatarUrl, 
+                                        style: { width: '28px', height: '28px', borderRadius: '4px', objectFit: 'cover' },
+                                        alt: ''
+                                    }));
+                                }
+                                userSelectButton.appendChild(el('span', {}, [matchedUser.name || matchedUser.url]));
+                            }
+                        }
+                        
+                        player.value = matchedUser.name || '';
+                        playerUrl.value = matchedUser.url;
+                    }else{
+                        // User not found, fill manually
+                        player.value = data.player || '';
+                        playerUrl.value = data.playerUrl;
+                    }
+                }
+                
+                statusDiv.style.background = '#d4edda';
+                statusDiv.style.color = '#155724';
+                const modeText = data.mode ? ` [${data.mode}]` : '';
+                statusDiv.textContent = `✅ Načteno: ${data.resultLabel || 'N/A'}${modeText}`;
+                
+                // Update preview
+                updatePreview(data);
+                
+                // Show user section if user needs to be selected manually
+                if(!selectedUserUrl && !playerUrl.value){
+                    const userSectionEl = document.getElementById('user-section');
+                    if(userSectionEl) userSectionEl.style.display = 'block';
+                }
+                
+                // Auto-save if all required fields are filled (optional - can be disabled)
+                // Uncomment to enable auto-save:
+                // if(data.resultUrl && (selectedUserUrl || playerUrl.value) && data.resultLabel){
+                //     setTimeout(() => {
+                //         statusDiv.textContent = '💾 Automatické uložení za 2 sekundy...';
+                //         setTimeout(async () => {
+                //             await autoSave();
+                //         }, 2000);
+                //     }, 1000);
+                // }
+            }catch(err){ 
+                statusDiv.style.background = '#f8d7da';
+                statusDiv.style.color = '#721c24';
+                statusDiv.textContent = '❌ Chyba: ' + (err.message || 'Selhalo zpracování');
+                console.error(err);
+            }
+        }
+        
+        // Auto-save function
+        async function autoSave(){
+            try{
+                statusDiv.style.background = '#fff3cd';
+                statusDiv.style.color = '#856404';
+                statusDiv.textContent = '💾 Ukládám...';
+                
+                const finalPlayerUrl = selectedUserUrl || playerUrl.value || '';
+                const finalPlayer = player.value || '';
+                
+                if(!finalPlayerUrl && !finalPlayer){
+                    statusDiv.style.background = '#f8d7da';
+                    statusDiv.style.color = '#721c24';
+                    statusDiv.textContent = '❌ Chybí URL nebo jméno hráče';
+                    return;
+                }
+                
+                // Add timeout to prevent hanging
+                const savePromise = saveEdit(ref, { 
+                    rank: rank.value || '', 
+                    player: finalPlayer, 
+                    playerUrl: finalPlayerUrl, 
+                    resultLabel: resultLabel.value || '', 
+                    resultUrl: resultUrl.value || '' 
+                });
+                
+                // Set a timeout for the save operation (30 seconds)
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Ukládání trvá příliš dlouho. Zkuste to prosím znovu.')), 30000)
+                );
+                
+                await Promise.race([savePromise, timeoutPromise]);
+                
+                statusDiv.style.background = '#d4edda';
+                statusDiv.style.color = '#155724';
+                statusDiv.textContent = '✅ Úspěšně uloženo!';
+                
+                setTimeout(() => {
+                    removeRoot();
+                    window.dispatchEvent(new Event('gg-refresh-data'));
+                    showSuccessNotification('✅ Rekord úspěšně uložen!');
+                }, 1500);
+            }catch(err){
+                statusDiv.style.background = '#f8d7da';
+                statusDiv.style.color = '#721c24';
+                const errorMsg = err.message || 'Neznámá chyba';
+                statusDiv.textContent = '❌ Chyba při ukládání: ' + errorMsg;
+                console.error('Save error:', err);
+                
+                // Show more helpful error message
+                if(errorMsg.includes('timeout') || errorMsg.includes('trvá příliš dlouho')){
+                    statusDiv.innerHTML = `
+                        <div style="margin-bottom: 8px;">❌ ${errorMsg}</div>
+                        <div style="font-size: 12px; opacity: 0.8;">Zkuste to prosím znovu. Pokud problém přetrvá, zkontrolujte konzoli pro více informací.</div>
+                    `;
+                }
+            }
+        }
         
         // Custom user dropdown with avatars
         const userDropdownWrapper = el('div', { style: { position: 'relative', marginBottom: '12px' } });
@@ -1193,158 +2017,187 @@
         advancedSection.appendChild(resultLabel);
         advancedSection.appendChild(resultUrl);
         
-        const btnProcess = el('button', { 
+        // Preview section showing parsed data
+        const previewSection = el('div', {
             style: { 
-                padding: '12px 24px', 
-                fontSize: '16px', 
-                fontWeight: '600', 
-                background: '#0b3d91', 
-                color: '#fff', 
-                border: 'none', 
-                borderRadius: '10px', 
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                boxShadow: '0 2px 8px rgba(11,61,145,0.25)',
-                flex: '1'
+                display: 'none',
+                marginBottom: '16px',
+                padding: '16px',
+                background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
+                borderRadius: '12px',
+                border: '1px solid rgba(11,61,145,0.2)'
             },
-            onmouseenter: function(){ this.style.background = '#1e5bb8'; this.style.transform = 'translateY(-2px)'; this.style.boxShadow = '0 4px 12px rgba(11,61,145,0.35)'; },
-            onmouseleave: function(){ this.style.background = '#0b3d91'; this.style.transform = 'translateY(0)'; this.style.boxShadow = '0 2px 8px rgba(11,61,145,0.25)'; }, 
-            onclick: async ()=>{
-                try{
-                    statusDiv.style.display = 'block';
-                    statusDiv.style.background = '#fff3cd';
-                    statusDiv.style.color = '#856404';
-                    statusDiv.textContent = 'Processing...';
-                    
-                    const inputText = mainInput.value.trim();
-                    if(!inputText){ 
-                        statusDiv.style.background = '#f8d7da';
-                        statusDiv.style.color = '#721c24';
-                        statusDiv.textContent = 'Please paste a game URL';
+            id: 'preview-section'
+        });
+        
+        function updatePreview(data){
+            if(!data || data.error){
+                previewSection.style.display = 'none';
                         return; 
                     }
                     
-                    const data = await parseAndFetchGameData(inputText);
-                    
-                    if(data.error){
-                        statusDiv.style.background = '#f8d7da';
-                        statusDiv.style.color = '#721c24';
-                        statusDiv.textContent = 'Error: ' + data.error;
-                        return;
-                    }
-                    
-                    // Fill in fields
-                    if(data.rank) rank.value = data.rank;
-                    if(data.resultLabel) resultLabel.value = data.resultLabel;
-                    if(data.resultUrl) resultUrl.value = data.resultUrl;
-                    
-                    // Try to match player URL with users list
-                    if(data.playerUrl){
-                        const matchedUser = usersList.find(u => u.url === data.playerUrl);
-                        if(matchedUser){
-                            selectedUserUrl = matchedUser.url;
-                            // Update dropdown button
-                            userSelectButton.innerHTML = '';
-                            if(matchedUser.avatarUrl){
-                                userSelectButton.appendChild(el('img', { 
-                                    src: matchedUser.avatarUrl, 
-                                    style: { width: '28px', height: '28px', borderRadius: '4px', objectFit: 'cover' },
-                                    alt: ''
-                                }));
-                            }
-                            userSelectButton.appendChild(el('span', {}, [matchedUser.name || matchedUser.url]));
-                            player.value = matchedUser.name || '';
-                            playerUrl.value = matchedUser.url;
-                        }else{
-                            // User not in list, fill manually
-                            player.value = data.player || '';
-                            playerUrl.value = data.playerUrl;
-                        }
-                    }
-                    
-                    statusDiv.style.background = '#d4edda';
-                    statusDiv.style.color = '#155724';
-                    const modeText = data.mode ? ` [${data.mode}]` : '';
-                    statusDiv.textContent = `✓ Loaded: ${data.resultLabel || 'N/A'}${modeText}`;
-                }catch(err){ 
-                    statusDiv.style.background = '#f8d7da';
-                    statusDiv.style.color = '#721c24';
-                    statusDiv.textContent = 'Error: ' + (err.message || 'Failed to process');
-                    console.error(err);
+            // Clear and rebuild preview
+            previewSection.innerHTML = '';
+            previewSection.style.display = 'block';
+            
+            const previewTitle = el('div', {
+                style: {
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    color: '#0b3d91',
+                    marginBottom: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
                 }
-            } 
-        }, ['Process & Auto-fill']);
+            }, ['👁️ Náhled dat']);
+            previewSection.appendChild(previewTitle);
+            
+            const previewGrid = el('div', {
+                style: {
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '8px',
+                    fontSize: '13px'
+                }
+            });
+            
+            if(data.resultLabel){
+                previewGrid.appendChild(el('div', { style: { fontWeight: '600', color: '#666' } }, ['Skóre:']));
+                previewGrid.appendChild(el('div', { style: { color: '#0b3d91', fontWeight: '600' } }, [String(data.resultLabel)]));
+            }
+            
+            const playerName = selectedUserUrl ? (usersList.find(u => u.url === selectedUserUrl)?.name || player.value) : (data.player || player.value || '');
+            const playerUrlDisplay = selectedUserUrl || data.playerUrl || playerUrl.value || '';
+            
+            if(playerName || playerUrlDisplay){
+                previewGrid.appendChild(el('div', { style: { fontWeight: '600', color: '#666' } }, ['Hráč:']));
+                previewGrid.appendChild(el('div', { style: { color: '#0b3d91' } }, [playerName || playerUrlDisplay || '-']));
+            }
+            
+            if(data.mode){
+                previewGrid.appendChild(el('div', { style: { fontWeight: '600', color: '#666' } }, ['Mód:']));
+                previewGrid.appendChild(el('div', { style: { color: '#0b3d91' } }, [String(data.mode)]));
+            }
+            
+            const rankValue = rank.value || data.rank || '';
+            if(rankValue){
+                previewGrid.appendChild(el('div', { style: { fontWeight: '600', color: '#666' } }, ['Pořadí:']));
+                previewGrid.appendChild(el('div', { style: { color: '#0b3d91' } }, [String(rankValue)]));
+            }
+            
+            previewSection.appendChild(previewGrid);
+        }
         
-        const btnSave = el('button', { 
+        // Update preview when fields change
+        const updatePreviewDebounced = (() => {
+            let timeout;
+            return () => {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => {
+                    const data = {
+                        resultLabel: resultLabel.value,
+                        resultUrl: resultUrl.value,
+                        rank: rank.value,
+                        mode: mainInput.value.match(/NMPZ|NM|MOVING/i)?.[0] || ''
+                    };
+                    updatePreview(data);
+                }, 300);
+            };
+        })();
+        
+        // Add listeners to update preview
+        if(resultLabel) resultLabel.addEventListener('input', updatePreviewDebounced);
+        if(rank) rank.addEventListener('input', updatePreviewDebounced);
+        
+        // Manual process button (backup if auto-process fails)
+        const btnProcess = el('button', { 
             style: { 
-                padding: '12px 24px', 
-                fontSize: '16px', 
+                padding: '10px 20px', 
+                fontSize: '14px', 
                 fontWeight: '600', 
-                background: '#28a745', 
-                color: '#fff', 
-                border: 'none', 
-                borderRadius: '10px', 
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                boxShadow: '0 2px 8px rgba(40,167,69,0.25)',
-                flex: '1'
-            },
-            onmouseenter: function(){ this.style.background = '#34ce57'; this.style.transform = 'translateY(-2px)'; this.style.boxShadow = '0 4px 12px rgba(40,167,69,0.35)'; },
-            onmouseleave: function(){ this.style.background = '#28a745'; this.style.transform = 'translateY(0)'; this.style.boxShadow = '0 2px 8px rgba(40,167,69,0.25)'; }, 
-            onclick: async ()=>{
-                try{
-                    statusDiv.style.display = 'block';
-                    statusDiv.style.background = '#fff3cd';
-                    statusDiv.style.color = '#856404';
-                    statusDiv.textContent = 'Saving...';
-                    
-                    // Use selected user URL if available, otherwise use manual input
-                    const finalPlayerUrl = selectedUserUrl || playerUrl.value || '';
-                    const finalPlayer = player.value || '';
-                    
-                    await saveEdit(ref, { 
-                        rank: rank.value || '', 
-                        player: finalPlayer, 
-                        playerUrl: finalPlayerUrl, 
-                        resultLabel: resultLabel.value || '', 
-                        resultUrl: resultUrl.value || '' 
-                    });
-                    
-                    statusDiv.style.background = '#d4edda';
-                    statusDiv.style.color = '#155724';
-                    statusDiv.textContent = '✓ Saved successfully!';
-                    
-                    setTimeout(() => {
-                        removeRoot();
-                        try{ window.dispatchEvent(new Event('gg-refresh-data')); }catch(_){ location.reload(); }
-                    }, 1000);
-                }catch(err){
-                    statusDiv.style.background = '#f8d7da';
-                    statusDiv.style.color = '#721c24';
-                    statusDiv.textContent = 'Error saving: ' + (err.message || 'Failed');
-                    console.error(err);
-                }
-            } 
-        }, ['Save']);
-        
-        const btnClose = el('button', { 
-            style: { 
-                padding: '12px 24px', 
-                fontSize: '16px', 
-                fontWeight: '500',
                 background: '#6c757d', 
                 color: '#fff', 
                 border: 'none', 
-                borderRadius: '10px', 
+                borderRadius: '8px', 
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
-                boxShadow: '0 2px 8px rgba(108,117,125,0.25)',
+                marginBottom: '12px',
+                width: '100%'
+            },
+            onmouseenter: function(){ this.style.background = '#5a6268'; },
+            onmouseleave: function(){ this.style.background = '#6c757d'; }, 
+            onclick: async ()=>{
+                await autoProcessInput();
+            } 
+        }, ['🔄 Zpracovat ručně']);
+        
+        // Button container with better layout
+        const buttonContainer = el('div', {
+            style: {
+                display: 'flex',
+                gap: '12px',
+                marginTop: '16px'
+            }
+        });
+        
+        const btnSave = el('button', { 
+            style: { 
+                padding: '14px 28px', 
+                fontSize: '16px', 
+                fontWeight: '700', 
+                background: 'linear-gradient(135deg, #28a745 0%, #20c997 100%)', 
+                color: '#fff', 
+                border: 'none', 
+                borderRadius: '10px', 
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                boxShadow: '0 4px 12px rgba(40,167,69,0.3)',
+                flex: '2'
+            },
+            onmouseenter: function(){ 
+                this.style.background = 'linear-gradient(135deg, #34ce57 0%, #28d9a8 100%)'; 
+                this.style.transform = 'translateY(-2px)'; 
+                this.style.boxShadow = '0 6px 16px rgba(40,167,69,0.4)'; 
+            },
+            onmouseleave: function(){ 
+                this.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)'; 
+                this.style.transform = 'translateY(0)'; 
+                this.style.boxShadow = '0 4px 12px rgba(40,167,69,0.3)'; 
+            }, 
+            onclick: async ()=>{
+                await autoSave();
+            } 
+        }, ['💾 Uložit']);
+        
+        const btnCancel = el('button', { 
+            style: { 
+                padding: '14px 28px', 
+                fontSize: '16px', 
+                fontWeight: '600', 
+                background: '#fff', 
+                color: '#666', 
+                border: '2px solid #ddd', 
+                borderRadius: '10px', 
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
                 flex: '1'
             },
-            onmouseenter: function(){ this.style.background = '#5a6268'; this.style.transform = 'translateY(-2px)'; this.style.boxShadow = '0 4px 12px rgba(108,117,125,0.35)'; },
-            onmouseleave: function(){ this.style.background = '#6c757d'; this.style.transform = 'translateY(0)'; this.style.boxShadow = '0 2px 8px rgba(108,117,125,0.25)'; }, 
-            onclick: ()=> removeRoot() 
-        }, ['Cancel']);
+            onmouseenter: function(){ 
+                this.style.borderColor = '#999'; 
+                this.style.background = '#f8f9fa'; 
+            },
+            onmouseleave: function(){ 
+                this.style.borderColor = '#ddd'; 
+                this.style.background = '#fff'; 
+            },
+            onclick: ()=>{
+                removeRoot();
+            } 
+        }, ['Zrušit']);
+        
+        buttonContainer.appendChild(btnSave);
+        buttonContainer.appendChild(btnCancel);
 
         const adminCard = el('div', { 
             style: { 
@@ -1385,7 +2238,17 @@
         formSection.appendChild(mainInput);
         adminCard.appendChild(formSection);
         
-        const userSection = el('div', { style: { marginBottom: '20px' } });
+        // Add preview section after input
+        adminCard.appendChild(previewSection);
+        
+        // Simplified user section - only show if needed
+        const userSection = el('div', { 
+            style: { 
+                marginBottom: '20px',
+                display: 'none' // Hidden by default, shown when user needs to be selected
+            },
+            id: 'user-section'
+        });
         userSection.appendChild(el('label', { 
             style: { 
                 display: 'block', 
@@ -1395,34 +2258,42 @@
                 fontSize: '15px',
                 color: '#333'
             } 
-        }, ['Select User:']));
+        }, ['Vyberte uživatele:']));
         userSection.appendChild(userDropdownWrapper);
         adminCard.appendChild(userSection);
         
+        // Collapsible sections
         adminCard.appendChild(addUserSection);
         adminCard.appendChild(advancedToggle);
         adminCard.appendChild(advancedSection);
         
+        // Manual process button (only shown if auto-process fails)
+        const manualProcessSection = el('div', {
+            style: {
+                display: 'none',
+                marginBottom: '12px'
+            },
+            id: 'manual-process-section'
+        });
+        manualProcessSection.appendChild(btnProcess);
+        adminCard.appendChild(manualProcessSection);
+        
+        // Button group with improved layout
         const buttonGroup = el('div', { 
             style: { 
                 marginTop: '24px', 
-                display: 'flex', 
-                gap: '12px', 
-                flexWrap: 'wrap',
                 paddingTop: '20px',
                 borderTop: '1px solid rgba(0,0,0,0.1)'
             } 
         });
-        buttonGroup.appendChild(btnProcess);
-        buttonGroup.appendChild(btnSave);
-        buttonGroup.appendChild(btnClose);
+        buttonGroup.appendChild(buttonContainer);
         adminCard.appendChild(buttonGroup);
         
         root.appendChild(adminCard);
     }
 
     async function fetchNextData(url){
-        const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
+        const res = await fetchWithProxy(url, 2);
         const html = await res.text();
         const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
         if(!m) {
@@ -1673,58 +2544,311 @@
         return enrichGroupsDataWithCache(groups, new Map(), new Map());
     }
     
+    // Force full enrichment - fetches all data from scratch and converts to base64
+    async function forceFullEnrichment(){
+        const owner = 'filipjarolim';
+        const repo = 'Geoguessr-cesko-Rekordy';
+        const branch = 'main';
+        
+        function getGitHubTokenLocal(){
+            // Check multiple sources in order of priority
+            const token = localStorage.getItem('gg_pat') || 
+                         (typeof window !== 'undefined' && window.GITHUB_TOKEN) ||
+                         '';
+            
+            if(!token){
+                const errorMsg = 'Missing GitHub token. ' +
+                    'Make sure you ran: npm run inject-token (or npm run dev) ' +
+                    'to load token from .env file. ' +
+                    'Or set window.GITHUB_TOKEN in browser console.';
+                console.error('❌', errorMsg);
+                throw new Error(errorMsg);
+            }
+            
+            return token;
+        }
+        
+        const token = getGitHubTokenLocal();
+        
+        async function ghGet(path){
+            const encodedPath = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
+            const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${branch}`;
+            const r = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' } });
+            if(!r.ok) throw new Error(`GET failed: ${r.status}`);
+            return await r.json();
+        }
+        
+        async function ghPut(path, content, sha, message){
+            const encodedPath = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
+            const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}`;
+            const body = { message, content: btoa(unescape(encodeURIComponent(content))), branch };
+            if(sha) body.sha = sha;
+            const r = await fetch(url, { 
+                method: 'PUT', 
+                headers: { 
+                    'Content-Type': 'application/json', 
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/vnd.github.v3+json'
+                }, 
+                body: JSON.stringify(body) 
+            });
+            if(!r.ok) {
+                const errorText = await r.text();
+                throw new Error(`PUT failed: ${r.status} - ${errorText.substring(0, 100)}`);
+            }
+            return await r.json();
+        }
+        
+        console.log('🚀 Starting FORCE FULL ENRICHMENT...');
+        showSuccessNotification('🚀 Starting full enrichment. This will take several minutes...');
+        
+        // Load leaderboards.json
+        let leaderboardsBase, leaderboardsData;
+        try {
+            leaderboardsBase = await ghGet('data/leaderboards.json');
+            if(leaderboardsBase && leaderboardsBase.content) {
+                leaderboardsData = JSON.parse(decodeURIComponent(escape(atob(leaderboardsBase.content))));
+            }
+        } catch(e) {
+            throw new Error('Failed to load leaderboards.json: ' + e.message);
+        }
+        
+        if(!leaderboardsData || !leaderboardsData.groups) {
+            throw new Error('No leaderboard data found.');
+        }
+        
+        console.log(`📊 Found ${leaderboardsData.groups.length} groups to enrich`);
+        
+        // Run enrichment with base64 conversion - NO CACHE, force fresh fetch
+        const groupsCopy = JSON.parse(JSON.stringify(leaderboardsData.groups));
+        const enrichedData = await enrichGroupsDataWithCache(groupsCopy, new Map(), new Map());
+        
+        // Verify we got data
+        let hasData = false;
+        let mapCount = 0;
+        let playerCount = 0;
+        let imageCount = 0;
+        
+        for(const group of enrichedData.groups){
+            for(const card of group.cards || []){
+                if(card.map){
+                    hasData = true;
+                    mapCount++;
+                    if(card.map.heroImage) imageCount++;
+                    if(card.map.coverAvatar) imageCount++;
+                    if(card.map.creator?.avatarImage) imageCount++;
+                    if(card.map.creator?.pinImage) imageCount++;
+                }
+                for(const entry of card.entries || []){
+                    if(entry.playerInfo){
+                        hasData = true;
+                        playerCount++;
+                        if(entry.playerInfo.avatarImage) imageCount++;
+                        if(entry.playerInfo.pinImage) imageCount++;
+                    }
+                }
+            }
+        }
+        
+        if(!hasData){
+            throw new Error('Enrichment completed but no data was fetched. Check console for errors.');
+        }
+        
+        console.log(`✅ Enrichment complete: ${mapCount} maps, ${playerCount} players, ${imageCount} images`);
+        
+        const enrichedPayload = {
+            generatedAt: new Date().toISOString(),
+            source: 'https://www.geoguessr.com',
+            groups: enrichedData.groups,
+            lookupCounts: enrichedData.stats
+        };
+        
+        // Get existing SHA if file exists
+        let enrichedSha = null;
+        try {
+            const existing = await ghGet('data/enrichedLeaderboards.json');
+            enrichedSha = existing.sha;
+        } catch(e) {
+            // File doesn't exist, that's okay
+        }
+        
+        await ghPut('data/enrichedLeaderboards.json', JSON.stringify(enrichedPayload, null, 2), enrichedSha, 'chore(admin): force full enrichment with base64 images', 3);
+        
+        console.log(`✅ Saved enriched data: ${mapCount} maps, ${playerCount} players`);
+        showSuccessNotification(`✅ Enrichment complete! ${mapCount} maps, ${playerCount} players, ${imageCount} images saved.`);
+        
+        // Clear cache
+        localStorage.removeItem('gg_enriched_cache_v1');
+        localStorage.removeItem('gg_enriched_cache_time_v1');
+    }
+    
+    // REMOVED: migrateAllImagesToBase64 - replaced by server-side script (scripts/fetchImagesToBase64.js)
+    // Use npm run fetch-images instead - it runs on Node.js server and bypasses CORS restrictions
+    
     async function enrichGroupsDataWithCache(groups, existingMapCache = new Map(), existingPlayerCache = new Map()){
         const mapCache = new Map(existingMapCache);
         const playerCache = new Map(existingPlayerCache);
         
-        async function fetchNextData(url, retries = 2){
-            for(let attempt = 0; attempt <= retries; attempt++){
-                try{
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout
-                    
-                    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, {
-                        signal: controller.signal
-                    });
-                    clearTimeout(timeoutId);
-                    
-                    if(res.status === 429) {
-                        // Rate limited - wait longer
-                        const retryAfter = parseInt(res.headers.get('Retry-After') || '60');
-                        throw new Error(`RATE_LIMITED:${retryAfter}`);
-                    }
-                    
-                    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-                    const html = await res.text();
-                    const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
-                    if(!m) throw new Error('Missing __NEXT_DATA__');
-                    return JSON.parse(m[1]);
-                }catch(e){
-                    if(e.message && e.message.startsWith('RATE_LIMITED:')) {
-                        const waitTime = parseInt(e.message.split(':')[1]) * 1000;
-                        if(attempt < retries) {
-                            console.warn(`  ⚠️ Rate limited, waiting ${waitTime/1000}s before retry...`);
-                            await new Promise(r => setTimeout(r, waitTime));
-                            continue;
+        // Load user avatars from users.json as fallback
+        try{
+            const usersResponse = await fetch('data/users.json?cb=' + Date.now());
+            if(usersResponse.ok){
+                const usersData = await usersResponse.json();
+                if(usersData && usersData.users && Array.isArray(usersData.users)){
+                    for(const user of usersData.users){
+                        if(user.url && user.avatarUrl && !playerCache.has(user.url)){
+                            // Add to cache as fallback
+                            playerCache.set(user.url, {
+                                nick: user.name || null,
+                                userId: user.url.match(/\/user\/([a-z0-9]+)/i)?.[1] || null,
+                                url: user.url,
+                                avatarImage: user.avatarUrl,
+                                pinImage: null
+                            });
                         }
-                        console.warn(`  ❌ Rate limited for ${url}, giving up after ${attempt + 1} attempts`);
-                        return null;
                     }
-                    if(attempt < retries && e.name !== 'AbortError'){
-                        const delay = 2000 * (attempt + 1); // Increased delay
-                        console.warn(`  ⚠️ Attempt ${attempt + 1} failed for ${url}, retrying in ${delay}ms...`);
-                        await new Promise(r => setTimeout(r, delay));
-                        continue;
-                    }
-                    console.warn(`  ❌ Failed to fetch ${url} after ${attempt + 1} attempts:`, e.message);
-                    return null;
+                    console.log(`📦 Loaded ${usersData.users.length} user avatars from users.json as fallback`);
                 }
             }
-            return null;
+        }catch(e){
+            console.warn('Failed to load users.json for fallback:', e.message);
+        }
+        
+        async function fetchNextData(url, retries = 2){
+            try{
+                const res = await fetchWithProxy(url, retries);
+                const html = await res.text();
+                const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+                if(!m) throw new Error('Missing __NEXT_DATA__');
+                return JSON.parse(m[1]);
+            }catch(e){
+                console.warn(`Failed to fetch ${url}:`, e.message);
+                return null;
+            }
         }
         
         function buildImageUrl(path, width = 256, height = 256){
             return path ? `https://www.geoguessr.com/images/resize:auto:${width}:${height}/gravity:ce/plain/${path}` : null;
+        }
+        
+        // Fetch image and convert to base64 data URL
+        // Uses comprehensive strategies with multiple fallbacks
+        // NOTE: For better reliability, use server-side script: npm run fetch-images
+        async function fetchImageAsBase64(imageUrl){
+            if(!imageUrl) return null;
+            
+            // If already a data URL, return as-is
+            if(imageUrl.startsWith('data:')) return imageUrl;
+            
+            // Strategy 1: Try direct fetch first (images often don't need CORS proxy)
+            try{
+                console.log(`  🖼️ [1/4] Direct fetch: ${imageUrl.substring(0, 50)}...`);
+                const directRes = await fetch(imageUrl, {
+                    mode: 'cors',
+                    credentials: 'omit',
+                    headers: {
+                        'Accept': 'image/*',
+                    }
+                });
+                
+                if(directRes.ok){
+                    const blob = await directRes.blob();
+                    const base64 = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result);
+                        reader.onerror = reject;
+                        reader.readAsDataURL(blob);
+                    });
+                    console.log(`  ✅ Direct fetch successful`);
+                    return base64;
+                }
+            }catch(directError){
+                // Direct fetch failed, continue to next strategy
+            }
+            
+            // Strategy 2: Use img element + canvas (bypasses CORS for images)
+            try{
+                console.log(`  🖼️ [2/4] Img+canvas: ${imageUrl.substring(0, 50)}...`);
+                const base64 = await new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    
+                    const timeout = setTimeout(() => {
+                        reject(new Error('Image load timeout'));
+                    }, 20000); // 20s timeout
+                    
+                    img.onload = function(){
+                        clearTimeout(timeout);
+                        try{
+                            const canvas = document.createElement('canvas');
+                            canvas.width = img.naturalWidth;
+                            canvas.height = img.naturalHeight;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0);
+                            const dataUrl = canvas.toDataURL('image/png');
+                            console.log(`  ✅ Img+canvas successful`);
+                            resolve(dataUrl);
+                        }catch(canvasError){
+                            reject(canvasError);
+                        }
+                    };
+                    
+                    img.onerror = function(){
+                        clearTimeout(timeout);
+                        reject(new Error('Image load failed'));
+                    };
+                    
+                    img.src = imageUrl;
+                });
+                return base64;
+            }catch(imgError){
+                // Img+canvas failed, continue to proxy
+            }
+            
+            // Strategy 3: Try proxy with comprehensive retry logic
+            try{
+                console.log(`  🖼️ [3/4] Proxy fetch: ${imageUrl.substring(0, 50)}...`);
+                const res = await fetchWithProxy(imageUrl, 5); // More retries
+                if(!res.ok) {
+                    console.warn(`  ⚠️ Proxy returned ${res.status}`);
+                    throw new Error(`HTTP ${res.status}`);
+                }
+                const blob = await res.blob();
+                const base64 = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+                console.log(`  ✅ Proxy fetch successful`);
+                return base64;
+            }catch(proxyError){
+                console.log(`  ⚠️ Proxy failed: ${proxyError.message}`);
+            }
+            
+            // Strategy 4: Last resort - try no-cors fetch and create blob URL
+            // Note: This won't work for base64 conversion, but we can try
+            try{
+                console.log(`  🖼️ [4/4] No-cors fallback: ${imageUrl.substring(0, 50)}...`);
+                const noCorsRes = await fetch(imageUrl, {
+                    mode: 'no-cors',
+                    credentials: 'omit'
+                });
+                
+                if(noCorsRes.type === 'opaque'){
+                    // Can't read opaque response, but image might load in browser
+                    console.warn(`  ⚠️ No-cors returned opaque response, cannot convert to base64`);
+                    // Return original URL as fallback
+                    return imageUrl;
+                }
+            }catch(noCorsError){
+                // No-cors also failed
+            }
+            
+            // All strategies failed
+            console.warn(`  ❌ All methods failed for ${imageUrl.substring(0, 50)}...`);
+            // Return original URL so at least something is stored
+            return imageUrl;
         }
         
         async function hydrateMap(mapUrl){
@@ -1751,6 +2875,30 @@
                 }
                 
                 const creator = map.creator || {};
+                
+                // Fetch images and convert to base64
+                const heroImageUrl = buildImageUrl(creator.pin?.path, 512, 512);
+                const coverAvatarUrl = buildImageUrl(creator.avatar?.fullBodyPath, 320, 320);
+                const creatorAvatarUrl = buildImageUrl(creator.avatar?.fullBodyPath);
+                const creatorPinUrl = buildImageUrl(creator.pin?.path);
+                
+                // Only fetch if not already base64 (from cache)
+                const heroImage = heroImageUrl && !heroImageUrl.startsWith('data:') 
+                    ? await fetchImageAsBase64(heroImageUrl) 
+                    : heroImageUrl;
+                await new Promise(r => setTimeout(r, 2000)); // 2s delay between image fetches to avoid rate limits
+                const coverAvatar = coverAvatarUrl && !coverAvatarUrl.startsWith('data:') 
+                    ? await fetchImageAsBase64(coverAvatarUrl) 
+                    : coverAvatarUrl;
+                await new Promise(r => setTimeout(r, 2000));
+                const creatorAvatar = creatorAvatarUrl && !creatorAvatarUrl.startsWith('data:') 
+                    ? await fetchImageAsBase64(creatorAvatarUrl) 
+                    : creatorAvatarUrl;
+                await new Promise(r => setTimeout(r, 2000));
+                const creatorPin = creatorPinUrl && !creatorPinUrl.startsWith('data:') 
+                    ? await fetchImageAsBase64(creatorPinUrl) 
+                    : creatorPinUrl;
+                
                 const enriched = {
                     id: map.id,
                     slug,
@@ -1766,8 +2914,8 @@
                     tags: map.tags || [],
                     createdAt: map.createdAt || null,
                     updatedAt: map.updatedAt || null,
-                    heroImage: buildImageUrl(creator.pin?.path, 512, 512),
-                    coverAvatar: buildImageUrl(creator.avatar?.fullBodyPath, 320, 320),
+                    heroImage: heroImage,
+                    coverAvatar: coverAvatar,
                     creator: {
                         nick: creator.nick || null,
                         userId: creator.userId || null,
@@ -1775,8 +2923,8 @@
                         countryCode: creator.countryCode || null,
                         isVerified: !!creator.isVerified,
                         isProUser: !!creator.isProUser,
-                        avatarImage: buildImageUrl(creator.avatar?.fullBodyPath),
-                        pinImage: buildImageUrl(creator.pin?.path)
+                        avatarImage: creatorAvatar,
+                        pinImage: creatorPin
                     }
                 };
                 
@@ -1815,6 +2963,19 @@
                 const stats = data?.props?.pageProps?.userBasicStats || {};
                 const progress = user.progress || {};
                 
+                // Fetch images and convert to base64
+                const avatarImageUrl = buildImageUrl(user.avatar?.fullBodyPath, 200, 200);
+                const pinImageUrl = buildImageUrl(user.pin?.path, 200, 200);
+                
+                // Only fetch if not already base64 (from cache)
+                const avatarImage = avatarImageUrl && !avatarImageUrl.startsWith('data:') 
+                    ? await fetchImageAsBase64(avatarImageUrl) 
+                    : avatarImageUrl;
+                await new Promise(r => setTimeout(r, 2000)); // 2s delay between image fetches to avoid rate limits
+                const pinImage = pinImageUrl && !pinImageUrl.startsWith('data:') 
+                    ? await fetchImageAsBase64(pinImageUrl) 
+                    : pinImageUrl;
+                
                 const enriched = {
                     nick: user.nick || null,
                     userId: user.userId || slug,
@@ -1829,8 +2990,8 @@
                     averageGameScore: stats.averageGameScore ?? null,
                     maxGameScore: stats.maxGameScore ?? null,
                     streakHighlights: (stats.streakRecords || []).slice(0, 5),
-                    avatarImage: buildImageUrl(user.avatar?.fullBodyPath, 200, 200),
-                    pinImage: buildImageUrl(user.pin?.path, 200, 200)
+                    avatarImage: avatarImage,
+                    pinImage: pinImage
                 };
                 
                 playerCache.set(playerUrl, enriched);
@@ -1862,25 +3023,83 @@
         console.log(`Enriching ${mapArray.length} maps and ${playerArray.length} players...`);
         
         // Fetch maps in batches - slower to avoid rate limits
-        for(let i = 0; i < mapArray.length; i += 2){
-            const batch = mapArray.slice(i, i + 2);
-            await Promise.all(batch.map(url => hydrateMap(url)));
-            if(i + 2 < mapArray.length) await new Promise(r => setTimeout(r, 2000)); // 2s delay between batches
+        // Skip fetching if cache already has all maps (to avoid rate limits)
+        const mapsToFetch = mapArray.filter(url => !mapCache.has(url) || mapCache.get(url) === null);
+        if(mapsToFetch.length > 0){
+            console.log(`Fetching ${mapsToFetch.length} new maps (${mapArray.length - mapsToFetch.length} already cached)...`);
+            for(let i = 0; i < mapsToFetch.length; i += 1){ // Reduced to 1 at a time
+                try{
+                    await hydrateMap(mapsToFetch[i]);
+                    if(i + 1 < mapsToFetch.length) await new Promise(r => setTimeout(r, 5000)); // 5s delay between requests
+                }catch(e){
+                    console.warn(`Failed to fetch map ${mapsToFetch[i]}:`, e.message);
+                    // Continue with next map even if this one fails
+                }
+            }
+        }else{
+            console.log(`All ${mapArray.length} maps already cached, skipping fetch`);
         }
         
         // Fetch players in batches - slower to avoid rate limits
-        for(let i = 0; i < playerArray.length; i += 3){
-            const batch = playerArray.slice(i, i + 3);
-            await Promise.all(batch.map(url => hydratePlayer(url)));
-            if(i + 3 < playerArray.length) await new Promise(r => setTimeout(r, 2000)); // 2s delay between batches
+        // Skip fetching if cache already has all players (to avoid rate limits)
+        const playersToFetch = playerArray.filter(url => !playerCache.has(url) || playerCache.get(url) === null);
+        if(playersToFetch.length > 0){
+            console.log(`Fetching ${playersToFetch.length} new players (${playerArray.length - playersToFetch.length} already cached)...`);
+            for(let i = 0; i < playersToFetch.length; i += 1){ // Reduced to 1 at a time
+                try{
+                    await hydratePlayer(playersToFetch[i]);
+                    if(i + 1 < playersToFetch.length) await new Promise(r => setTimeout(r, 5000)); // 5s delay between requests
+                }catch(e){
+                    console.warn(`Failed to fetch player ${playersToFetch[i]}:`, e.message);
+                    // Continue with next player even if this one fails
+                }
+            }
+        }else{
+            console.log(`All ${playerArray.length} players already cached, skipping fetch`);
         }
         
         // Attach enriched data to groups
         for(const group of groups){
             for(const card of group.cards){
                 card.map = mapCache.get(card.mapUrl) || null;
+                
+                // Fallback: if map fetch failed but we have mapUrl, try to extract map ID and use placeholder
+                if(!card.map && card.mapUrl){
+                    try{
+                        const mapId = card.mapUrl.split('/').filter(Boolean).pop();
+                        if(mapId && mapId.match(/^[a-z0-9]+$/i)){
+                            // Use a placeholder or try direct CDN URL structure
+                            // Note: This won't work without proper path, but at least preserves structure
+                            card.map = {
+                                id: mapId,
+                                slug: mapId,
+                                name: card.title || 'Unknown Map',
+                                heroImage: null, // Can't generate without path
+                                coverAvatar: null
+                            };
+                        }
+                    }catch(_){}
+                }
+                
                 for(const entry of card.entries){
                     entry.playerInfo = playerCache.get(entry.playerUrl) || null;
+                    
+                    // Fallback: if player fetch failed but we have playerUrl, try to extract user ID
+                    if(!entry.playerInfo && entry.playerUrl){
+                        try{
+                            const userId = entry.playerUrl.match(/\/user\/([a-z0-9]+)/i)?.[1];
+                            if(userId){
+                                // Use a placeholder structure
+                                entry.playerInfo = {
+                                    nick: entry.player || 'Unknown',
+                                    userId: userId,
+                                    url: entry.playerUrl,
+                                    avatarImage: null, // Can't generate without path
+                                    pinImage: null
+                                };
+                            }
+                        }catch(_){}
+                    }
                 }
             }
         }
@@ -1901,13 +3120,24 @@
         const branch = 'main';
         
         function getGitHubTokenLocal(){
-            return localStorage.getItem('gg_pat') || 
-                   (typeof window !== 'undefined' && window.GITHUB_TOKEN) ||
-                   '';
+            // Check multiple sources in order of priority
+            const token = localStorage.getItem('gg_pat') || 
+                         (typeof window !== 'undefined' && window.GITHUB_TOKEN) ||
+                         '';
+            
+            if(!token){
+                const errorMsg = 'Missing GitHub token. ' +
+                    'Make sure you ran: npm run inject-token (or npm run dev) ' +
+                    'to load token from .env file. ' +
+                    'Or set window.GITHUB_TOKEN in browser console.';
+                alert(errorMsg);
+                throw new Error('No token');
+            }
+            
+            return token;
         }
         
         const token = getGitHubTokenLocal();
-        if(!token){ alert('Missing GitHub token. Provide it via URL (#admin&token=YOUR_TOKEN) or set window.GITHUB_TOKEN in console'); throw new Error('No token'); }
         
         // Verify token has basic format (GitHub tokens are usually 40+ chars for classic tokens, or start with ghp_/gho_/ghu_/ghs_/ghr_ for fine-grained)
         if(token.length < 20) {
@@ -1947,15 +3177,39 @@
             }
         }
 
-        async function ghGet(path){
+        async function ghGet(path, retries = 3){
             // URL encode the path properly
             const encodedPath = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
             const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${branch}`;
-            console.log('GitHub API GET:', url);
-            console.log('Repository:', `${owner}/${repo}`, 'Branch:', branch);
-            console.log('Token present:', !!token, 'Token length:', token ? token.length : 0);
             
-            const r = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' } });
+            let lastError;
+            for(let attempt = 0; attempt <= retries; attempt++){
+                try{
+                    if(attempt > 0){
+                        // Exponential backoff for retries
+                        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+                        console.log(`Retrying GitHub GET (attempt ${attempt + 1}/${retries + 1}) after ${delay}ms...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    }
+                    
+                    const r = await fetch(url, { 
+                        headers: { 
+                            Authorization: `Bearer ${token}`, 
+                            Accept: 'application/vnd.github.v3+json',
+                            'If-None-Match': attempt > 0 ? '' : undefined // Remove cache header on retry
+                        },
+                        cache: attempt === 0 ? 'default' : 'no-store' // Use cache on first attempt
+                    });
+                    
+                    // Handle rate limiting
+                    if(r.status === 429){
+                        const retryAfter = r.headers.get('Retry-After') || r.headers.get('X-RateLimit-Reset');
+                        const waitTime = retryAfter ? (parseInt(retryAfter) * 1000 - Date.now()) : 60000;
+                        console.warn(`Rate limited, waiting ${waitTime/1000}s...`);
+                        await new Promise(resolve => setTimeout(resolve, Math.max(waitTime, 60000)));
+                        continue; // Retry after waiting
+                    }
+                    
             if(!r.ok) {
                 const errorText = await r.text();
                 console.error('GitHub API error:', r.status, errorText);
@@ -1975,15 +3229,36 @@
                 } catch(e) {
                     errorMsg += `. ${errorText.substring(0, 200)}`;
                 }
-                throw new Error(errorMsg);
+                        lastError = new Error(errorMsg);
+                        // Don't retry on 404 or 401
+                        if(r.status === 404 || r.status === 401){
+                            throw lastError;
+                        }
+                        // Retry on other errors
+                        if(attempt < retries){
+                            continue;
+                        }
+                        throw lastError;
+                    }
+                    
+                    const data = await r.json();
+                    console.log(`✅ GitHub GET successful (attempt ${attempt + 1})`);
+                    return data;
+                }catch(e){
+                    lastError = e;
+                    if(attempt < retries && e.message && !e.message.includes('404') && !e.message.includes('401')){
+                        continue; // Retry
+                    }
+                    throw e;
+                }
             }
-            return await r.json();
+            
+            throw lastError || new Error('GitHub GET failed after retries');
         }
-        async function ghPut(path, content, sha, message){
+        async function ghPut(path, content, sha, message, retries = 3){
             // URL encode the path properly
             const encodedPath = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
             const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}`;
-            console.log('GitHub API PUT:', url, 'SHA:', sha || '(new file)');
             
             const body = { 
                 message, 
@@ -1996,6 +3271,27 @@
                 body.sha = sha;
             }
             
+            let lastError;
+            for(let attempt = 0; attempt <= retries; attempt++){
+                try{
+                    if(attempt > 0){
+                        // Exponential backoff for retries
+                        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+                        console.log(`Retrying GitHub PUT (attempt ${attempt + 1}/${retries + 1}) after ${delay}ms...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        
+                        // Re-fetch SHA if updating (might have changed)
+                        if(sha && attempt > 0){
+                            try{
+                                const current = await ghGet(path, 1);
+                                body.sha = current.sha;
+                                console.log(`Updated SHA for retry: ${body.sha.substring(0, 7)}...`);
+                            }catch(e){
+                                console.warn('Failed to refresh SHA:', e);
+                            }
+                        }
+            }
+            
             const r = await fetch(url, { 
                 method: 'PUT', 
                 headers: { 
@@ -2005,6 +3301,15 @@
                 }, 
                 body: JSON.stringify(body) 
             });
+                    
+                    // Handle rate limiting
+                    if(r.status === 429){
+                        const retryAfter = r.headers.get('Retry-After') || r.headers.get('X-RateLimit-Reset');
+                        const waitTime = retryAfter ? (parseInt(retryAfter) * 1000 - Date.now()) : 60000;
+                        console.warn(`Rate limited, waiting ${waitTime/1000}s...`);
+                        await new Promise(resolve => setTimeout(resolve, Math.max(waitTime, 60000)));
+                        continue; // Retry after waiting
+                    }
             
             if(!r.ok) {
                 const errorText = await r.text();
@@ -2029,19 +3334,53 @@
                         errorMsg += `5. Update token in admin panel or set window.GITHUB_TOKEN\n\n`;
                         errorMsg += `Current token: ${token.substring(0, 10)}... (length: ${token.length})`;
                     }
+                            
+                            // Handle 409 conflict (file changed)
+                            if(r.status === 409 && sha && attempt < retries){
+                                console.warn('File conflict detected, refreshing SHA...');
+                                // Will retry with new SHA
+                                continue;
+                    }
                 } catch(e) {
                     errorMsg += `. ${errorText.substring(0, 200)}`;
                 }
-                throw new Error(errorMsg);
+                        lastError = new Error(errorMsg);
+                        // Don't retry on 401 or 404
+                        if(r.status === 401 || r.status === 404){
+                            throw lastError;
+                        }
+                        // Retry on other errors
+                        if(attempt < retries){
+                            continue;
+                        }
+                        throw lastError;
+                    }
+                    
+                    const data = await r.json();
+                    console.log(`✅ GitHub PUT successful (attempt ${attempt + 1})`);
+                    return data;
+                }catch(e){
+                    lastError = e;
+                    if(attempt < retries && e.message && !e.message.includes('401') && !e.message.includes('404') && !e.message.includes('403')){
+                        continue; // Retry
+                    }
+                    throw e;
+                }
             }
-            return await r.json();
+            
+            throw lastError || new Error('GitHub PUT failed after retries');
         }
         async function fetchNextDataLocal(url){
-            const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
-            const html = await res.text();
-            const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
-            if(!m) return null;
-            return JSON.parse(m[1]);
+            try{
+                const res = await fetchWithProxy(url, 2);
+                const html = await res.text();
+                const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+                if(!m) return null;
+                return JSON.parse(m[1]);
+            }catch(e){
+                console.warn(`Failed to fetch ${url}:`, e.message);
+                return null;
+            }
         }
 
         // Test token permissions first
@@ -2202,11 +3541,15 @@
         console.log('Saving to:', savePath, 'SHA:', base.sha || '(new file)');
         
         // If file doesn't exist (no SHA), create it; otherwise update it
-        const res1 = await ghPut(savePath, updatedLeaderboards, base.sha, 'chore(admin): edit entry');
+        const res1 = await ghPut(savePath, updatedLeaderboards, base.sha, 'chore(admin): edit entry', 3);
+        
+        console.log('✅ Leaderboards.json saved successfully');
 
-        // Enrich and update enrichedLeaderboards.json
-        try {
-            console.log('🔄 Starting enrichment process...');
+        // Enrich and update enrichedLeaderboards.json - run in background (non-blocking)
+        // Don't await this - let it run in background while user sees success message
+        (async () => {
+            try {
+                console.log('🔄 Starting background enrichment process...');
             showSuccessNotification('🔄 Enriching data with images and player info...');
             
             // Try to load existing enriched data first to preserve existing enrichment
@@ -2249,11 +3592,13 @@
             // Enrich the data - use existing cache to speed up
             let enrichedData;
             try {
+                // Only enrich if we have new data to fetch, otherwise use existing cache
                 enrichedData = await enrichGroupsDataWithCache(groupsCopy, existingMapCache, existingPlayerCache);
                 console.log(`✅ Enrichment complete: ${enrichedData.stats.maps} maps, ${enrichedData.stats.players} players`);
             } catch(enrichError) {
                 console.warn('⚠️ Enrichment failed, using existing enriched data:', enrichError.message);
                 // If enrichment fails (e.g., rate limit), merge existing enriched data with new groups
+                // This ensures we keep existing images even if new ones can't be fetched
                 enrichedData = {
                     groups: groupsCopy.map(group => {
                         // Try to find matching group in existing enriched data
@@ -2292,6 +3637,32 @@
                 showErrorNotification('⚠️ Rate limited - using cached images. Some new images may be missing.');
             }
             
+            // Ensure we preserve ALL existing images even if enrichment partially failed
+            // Merge back any existing enriched data that wasn't overwritten
+            if(existingEnriched && existingEnriched.groups) {
+                for(const existingGroup of existingEnriched.groups) {
+                    const group = enrichedData.groups.find(g => g.id === existingGroup.id);
+                    if(group) {
+                        for(const existingCard of existingGroup.cards || []) {
+                            const card = group.cards.find(c => c.mapUrl === existingCard.mapUrl || c.title === existingCard.title);
+                            if(card) {
+                                // Preserve existing map if new one is missing
+                                if(existingCard.map && !card.map) {
+                                    card.map = existingCard.map;
+                                }
+                                // Preserve existing playerInfo for entries
+                                for(const existingEntry of existingCard.entries || []) {
+                                    const entry = card.entries.find(e => e.playerUrl === existingEntry.playerUrl);
+                                    if(entry && existingEntry.playerInfo && !entry.playerInfo) {
+                                        entry.playerInfo = existingEntry.playerInfo;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
             // Verify enrichment worked
             let hasEnrichment = false;
             for(const group of enrichedData.groups) {
@@ -2314,15 +3685,16 @@
                 lookupCounts: enrichedData.stats
             };
             
-            await ghPut('data/enrichedLeaderboards.json', JSON.stringify(enrichedPayload, null, 2), enrichedSha, 'chore(admin): enrich and sync data');
-            console.log('✅ Enriched data saved to GitHub');
-            showSuccessNotification('✅ Enrichment complete! Data saved with images.');
-        } catch(e){ 
-            console.error('❌ Failed to enrich and update enrichedLeaderboards.json:', e);
-            console.error('Stack trace:', e.stack);
-            // Don't throw - leaderboards.json is already saved, enrichment can be retried
-            showErrorNotification('⚠️ Data saved but enrichment failed. Images may not load. Error: ' + (e.message || 'Unknown error'));
-        }
+                await ghPut('data/enrichedLeaderboards.json', JSON.stringify(enrichedPayload, null, 2), enrichedSha, 'chore(admin): enrich and sync data', 3);
+                console.log('✅ Enriched data saved to GitHub');
+                showSuccessNotification('✅ Enrichment complete! Data saved with images.');
+            } catch(e){ 
+                console.error('❌ Failed to enrich and update enrichedLeaderboards.json:', e);
+                console.error('Stack trace:', e.stack);
+                // Don't throw - leaderboards.json is already saved, enrichment can be retried
+                showSuccessNotification('⚠️ Data saved but enrichment failed. Images may not load. Error: ' + (e.message || 'Unknown error'));
+            }
+        })(); // Run in background, don't await
         
         // Clear ALL cache keys (including ui.js cache)
         try {
@@ -3081,6 +4453,17 @@
         }
     }
 
+    // Debug: Check if token is available on page load
+    if(typeof window !== 'undefined'){
+        const tokenCheck = localStorage.getItem('gg_pat') || window.GITHUB_TOKEN;
+        if(tokenCheck){
+            console.log('✅ GitHub token found:', tokenCheck.substring(0, 10) + '...');
+        } else {
+            console.warn('⚠️ GitHub token not found. Make sure you ran: npm run inject-token');
+            console.warn('   Or set window.GITHUB_TOKEN in browser console');
+        }
+    }
+    
     document.addEventListener('DOMContentLoaded', boot);
     window.addEventListener('hashchange', boot);
     

@@ -1,11 +1,12 @@
 {
   "name": "geoceskorekordy",
   "version": "1.0.0",
-  "description": "��#\u0000 \u0000G\u0000e\u0000o\u0000\f\u0001e\u0000s\u0000k\u0000o\u0000 \u0000r\u0000e\u0000k\u0000o\u0000r\u0000d\u0000y\u0000\r\u0000 \u0000",
+  "description": "GeoGuessr České a Slovenské rekordy - Leaderboard pro CZ/SK komunitu",
   "main": "script.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build-data": "node scripts/buildData.js",
+    "fetch-images": "node scripts/fetchImagesToBase64.js",
     "inject-token": "node inject-token.js",
     "build": "npm run inject-token",
     "dev": "npm run inject-token && echo 'Token injected. Start your server now.'"
