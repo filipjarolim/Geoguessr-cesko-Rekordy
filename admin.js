@@ -142,6 +142,1000 @@
         return '';
     }
 
+    function openAddRecordEditor(){
+        const root = getRoot();
+        root.innerHTML = '';
+        root.style.zIndex = '100001';
+        root.style.background = 'rgba(0,0,0,0.95)';
+        
+        const card = el('div', { 
+            style: { 
+                maxWidth: '600px', 
+                margin: '60px auto', 
+                background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)', 
+                borderRadius: '20px', 
+                padding: '32px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+                fontFamily: 'Quicksand, sans-serif',
+                position: 'relative'
+            } 
+        });
+        
+        const header = el('div', { style: { marginBottom: '24px', textAlign: 'center' } });
+        const title = el('h2', { 
+            style: { 
+                fontSize: '28px', 
+                fontWeight: '700', 
+                color: '#0b3d91', 
+                margin: '0 0 8px 0',
+                fontFamily: 'Quicksand, sans-serif'
+            } 
+        }, ['➕ Přidat nový záznam']);
+        header.appendChild(title);
+        card.appendChild(header);
+        
+        const statusDiv = el('div', { 
+            style: { 
+                marginBottom: '16px', 
+                padding: '12px 16px', 
+                borderRadius: '10px', 
+                fontSize: '14px', 
+                display: 'none', 
+                transition: 'all 0.3s ease', 
+                fontWeight: '500', 
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)' 
+            } 
+        });
+        card.appendChild(statusDiv);
+        
+        // Main input: game URL or text
+        const mainInputLabel = el('label', { 
+            style: { 
+                display: 'block', 
+                marginBottom: '8px', 
+                fontWeight: '600', 
+                color: '#333',
+                fontSize: '14px'
+            } 
+        }, ['📋 Vložte odkaz na hru nebo text záznamu']);
+        const mainInput = el('textarea', {
+            style: {
+                width: '100%',
+                padding: '12px',
+                borderRadius: '10px',
+                border: '2px solid #e0e0e0',
+                fontSize: '14px',
+                fontFamily: 'monospace',
+                resize: 'vertical',
+                minHeight: '80px',
+                marginBottom: '16px',
+                transition: 'border-color 0.3s ease'
+            },
+            placeholder: 'Vložte odkaz na GeoGuessr hru nebo zkopírujte text záznamu...',
+            oninput: function(){
+                this.style.borderColor = '#0b3d91';
+                autoProcessInputForAddRecord();
+            }
+        });
+        card.appendChild(mainInputLabel);
+        card.appendChild(mainInput);
+        
+        // Group selection (score-time or streaks)
+        const groupLabel = el('label', { 
+            style: { 
+                display: 'block', 
+                marginBottom: '8px', 
+                fontWeight: '600', 
+                color: '#333',
+                fontSize: '14px'
+            } 
+        }, ['📂 Kategorie']);
+        const groupSelect = el('select', {
+            style: {
+                width: '100%',
+                padding: '12px',
+                borderRadius: '10px',
+                border: '2px solid #e0e0e0',
+                fontSize: '14px',
+                marginBottom: '16px',
+                background: 'white',
+                cursor: 'pointer'
+            },
+            id: 'add-record-group-select'
+        });
+        groupSelect.appendChild(el('option', { value: 'score-time' }, ['Skóre/Čas']));
+        groupSelect.appendChild(el('option', { value: 'streaks' }, ['Streaks']));
+        card.appendChild(groupLabel);
+        card.appendChild(groupSelect);
+        
+        // Map selection (if not auto-detected)
+        const mapLabel = el('label', { 
+            style: { 
+                display: 'block', 
+                marginBottom: '8px', 
+                fontWeight: '600', 
+                color: '#333',
+                fontSize: '14px'
+            } 
+        }, ['🗺️ Mapa (pokud není auto-detekováno)']);
+        const mapInput = el('input', {
+            type: 'text',
+            style: {
+                width: '100%',
+                padding: '12px',
+                borderRadius: '10px',
+                border: '2px solid #e0e0e0',
+                fontSize: '14px',
+                marginBottom: '16px',
+                display: 'none'
+            },
+            id: 'add-record-map-input',
+            placeholder: 'URL mapy nebo název mapy'
+        });
+        card.appendChild(mapLabel);
+        card.appendChild(mapInput);
+        
+        // Mode selection (if not auto-detected)
+        const modeLabel = el('label', { 
+            style: { 
+                display: 'block', 
+                marginBottom: '8px', 
+                fontWeight: '600', 
+                color: '#333',
+                fontSize: '14px'
+            } 
+        }, ['🎮 Mód (pokud není auto-detekováno)']);
+        const modeSelect = el('select', {
+            style: {
+                width: '100%',
+                padding: '12px',
+                borderRadius: '10px',
+                border: '2px solid #e0e0e0',
+                fontSize: '14px',
+                marginBottom: '16px',
+                background: 'white',
+                cursor: 'pointer',
+                display: 'none'
+            },
+            id: 'add-record-mode-select'
+        });
+        modeSelect.appendChild(el('option', { value: 'MOVING' }, ['Moving']));
+        modeSelect.appendChild(el('option', { value: 'NM' }, ['No Move']));
+        modeSelect.appendChild(el('option', { value: 'NMPZ' }, ['NMPZ']));
+        card.appendChild(modeLabel);
+        card.appendChild(modeSelect);
+        
+        // User selection (reuse same logic as openEditor)
+        const userLabel = el('label', { 
+            style: { 
+                display: 'block', 
+                marginBottom: '8px', 
+                fontWeight: '600', 
+                color: '#333',
+                fontSize: '14px'
+            } 
+        }, ['👤 Hráč']);
+        
+        const userDropdownWrapper = el('div', { 
+            style: { 
+                position: 'relative', 
+                marginBottom: '16px' 
+            } 
+        });
+        
+        let selectedUserUrl = '';
+        const userSelectButton = el('button', {
+            type: 'button',
+            style: {
+                width: '100%',
+                padding: '12px',
+                borderRadius: '10px',
+                border: '2px solid #e0e0e0',
+                fontSize: '14px',
+                background: 'white',
+                cursor: 'pointer',
+                textAlign: 'left',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                justifyContent: 'space-between'
+            },
+            id: 'add-record-user-select',
+            onclick: function(e){
+                e.stopPropagation();
+                const isOpen = userDropdownList.style.display === 'block';
+                userDropdownList.style.display = isOpen ? 'none' : 'block';
+                if(!isOpen) userSearchInput?.focus();
+            }
+        });
+        
+        userSelectButton.appendChild(el('span', { style: { display: 'flex', alignItems: 'center', gap: '8px' } }, [
+            el('span', {}, ['Vyberte hráče...'])
+        ]));
+        userSelectButton.appendChild(el('span', { style: { fontSize: '12px', color: '#999' } }, ['▼']));
+        
+        const userDropdownList = el('div', {
+            style: {
+                display: 'none',
+                position: 'absolute',
+                top: '100%',
+                left: '0',
+                right: '0',
+                background: 'white',
+                border: '2px solid #e0e0e0',
+                borderRadius: '10px',
+                marginTop: '4px',
+                maxHeight: '300px',
+                overflowY: 'auto',
+                zIndex: '1000',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+            }
+        });
+        
+        // Search input for users
+        const userSearchInput = el('input', {
+            type: 'text',
+            placeholder: 'Hledat uživatele...',
+            style: {
+                width: '100%',
+                padding: '8px 12px',
+                border: 'none',
+                borderBottom: '1px solid #e0e0e0',
+                fontSize: '13px',
+                outline: 'none',
+                background: '#f8f9fa'
+            },
+            oninput: function(){
+                updateUserDropdownForAddRecord();
+            },
+            onclick: function(e){
+                e.stopPropagation();
+            }
+        });
+        userDropdownList.appendChild(userSearchInput);
+        
+        let searchDebounceTimeout = null;
+        let isRefreshing = false;
+        let selectedIndex = -1;
+        let userItems = [];
+        
+        // Get recent users from localStorage
+        function getRecentUsers(){
+            try{
+                const recent = localStorage.getItem('gg_recent_users');
+                return recent ? JSON.parse(recent) : [];
+            }catch(e){
+                return [];
+            }
+        }
+        
+        // Save user to recent users
+        function saveRecentUser(userUrl){
+            try{
+                const recent = getRecentUsers();
+                const index = recent.indexOf(userUrl);
+                if(index > -1) recent.splice(index, 1);
+                recent.unshift(userUrl);
+                // Keep only last 10
+                if(recent.length > 10) recent.pop();
+                localStorage.setItem('gg_recent_users', JSON.stringify(recent));
+            }catch(e){}
+        }
+        
+        function updateUserDropdownForAddRecord(){
+            const searchTerm = userSearchInput.value.toLowerCase().trim();
+            selectedIndex = -1;
+            userItems = [];
+            
+            // Get recent users
+            const recentUrls = getRecentUsers();
+            const recentUsers = recentUrls.map(url => usersList.find(u => u.url === url)).filter(Boolean);
+            
+            // Sort users: with names first, then by name alphabetically
+            const sortedUsers = [...usersList].sort((a, b) => {
+                const aHasName = !!(a.name && a.name.trim());
+                const bHasName = !!(b.name && b.name.trim());
+                if(aHasName && !bHasName) return -1;
+                if(!aHasName && bHasName) return 1;
+                if(aHasName && bHasName) {
+                    return (a.name || '').localeCompare(b.name || '', 'cs');
+                }
+                return 0;
+            });
+            
+            const filteredUsers = searchTerm 
+                ? sortedUsers.filter(u => {
+                    const name = (u.name || '').toLowerCase();
+                    const urlId = (u.url.match(/\/user\/([a-z0-9]+)/i)?.[1] || '').toLowerCase();
+                    const urlLower = u.url.toLowerCase();
+                    return name.includes(searchTerm) || urlId.includes(searchTerm) || urlLower.includes(searchTerm);
+                })
+                : sortedUsers;
+            
+            // Separate recent users from filtered (only if not searching)
+            const displayRecentUsers = !searchTerm && recentUsers.length > 0 ? recentUsers : [];
+            const displayRegularUsers = searchTerm ? filteredUsers : filteredUsers.filter(u => !recentUrls.includes(u.url));
+            
+            // Clear and rebuild list (keep search input)
+            const searchInput = userDropdownList.querySelector('input');
+            userDropdownList.innerHTML = '';
+            if(searchInput) userDropdownList.appendChild(searchInput);
+            
+            // Add refresh button at top
+            const refreshBtn = el('button', {
+                tabindex: '-1',
+                style: {
+                    width: '100%',
+                    padding: '8px 12px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    background: isRefreshing ? '#e0e0e0' : '#f8f9fa',
+                    color: isRefreshing ? '#999' : '#0b3d91',
+                    border: 'none',
+                    borderBottom: '1px solid #e0e0e0',
+                    cursor: isRefreshing ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    transition: 'all 0.2s ease'
+                },
+                disabled: isRefreshing,
+                onclick: async function(e){
+                    e.stopPropagation();
+                    if(isRefreshing) return;
+                    isRefreshing = true;
+                    this.textContent = '🔄 Obnovuji...';
+                    this.style.background = '#e0e0e0';
+                    this.style.color = '#999';
+                    
+                    try{
+                        await loadUsers();
+                        updateUserDropdownForAddRecord();
+                        this.textContent = '✅ Obnoveno';
+                        setTimeout(() => {
+                            this.textContent = '🔄 Obnovit seznam';
+                            this.style.background = '#f8f9fa';
+                            this.style.color = '#0b3d91';
+                            isRefreshing = false;
+                        }, 1000);
+                    }catch(e){
+                        this.textContent = '❌ Chyba';
+                        setTimeout(() => {
+                            this.textContent = '🔄 Obnovit seznam';
+                            this.style.background = '#f8f9fa';
+                            this.style.color = '#0b3d91';
+                            isRefreshing = false;
+                        }, 2000);
+                    }
+                }
+            }, ['🔄 Obnovit seznam']);
+            userDropdownList.appendChild(refreshBtn);
+            
+            // Show recent users section
+            if(displayRecentUsers.length > 0){
+                const recentHeader = el('div', {
+                    style: {
+                        padding: '8px 12px',
+                        fontSize: '11px',
+                        fontWeight: '600',
+                        color: '#0b3d91',
+                        background: '#e3f2fd',
+                        borderBottom: '1px solid #bbdefb',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                    }
+                }, ['🕒 Nedávní uživatelé']);
+                userDropdownList.appendChild(recentHeader);
+                
+                displayRecentUsers.forEach(user => {
+                    const userItem = createUserItem(user, true);
+                    userDropdownList.appendChild(userItem);
+                });
+                
+                // Separator
+                const separator = el('div', {
+                    style: {
+                        padding: '8px 12px',
+                        fontSize: '11px',
+                        fontWeight: '600',
+                        color: '#666',
+                        background: '#f8f9fa',
+                        borderBottom: '1px solid #e0e0e0',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                    }
+                }, ['Všichni uživatelé']);
+                userDropdownList.appendChild(separator);
+            }
+            
+            // Show count
+            if(filteredUsers.length !== sortedUsers.length){
+                const countInfo = el('div', {
+                    style: {
+                        padding: '6px 12px',
+                        fontSize: '11px',
+                        color: '#666',
+                        background: '#f8f9fa',
+                        borderBottom: '1px solid #e0e0e0',
+                        textAlign: 'center'
+                    }
+                }, [`Zobrazeno ${filteredUsers.length} z ${sortedUsers.length} uživatelů`]);
+                userDropdownList.appendChild(countInfo);
+            }
+            
+            if(displayRegularUsers.length === 0 && displayRecentUsers.length === 0){
+                const noResults = el('div', {
+                    style: {
+                        padding: '20px',
+                        textAlign: 'center',
+                        color: '#999',
+                        fontSize: '14px'
+                    }
+                }, ['Žádní uživatelé nenalezeni']);
+                userDropdownList.appendChild(noResults);
+                return;
+            }
+            
+            // Create user item function
+            function createUserItem(user, isRecent = false){
+                const itemIndex = userItems.length;
+                const userItem = el('div', {
+                    'data-user-index': itemIndex,
+                    'data-user-url': user.url,
+                    role: 'option',
+                    tabindex: '-1',
+                    style: {
+                        padding: '10px 12px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        borderBottom: '1px solid #f0f0f0',
+                        transition: 'all 0.2s ease',
+                        position: 'relative',
+                        outline: 'none'
+                    },
+                    onmouseenter: function(){ 
+                        selectedIndex = itemIndex;
+                        updateSelectedItem();
+                        if(this.querySelector('.user-refresh-btn')){
+                            this.querySelector('.user-refresh-btn').style.opacity = '1';
+                        }
+                        if(this.querySelector('.user-copy-btn')){
+                            this.querySelector('.user-copy-btn').style.opacity = '1';
+                        }
+                    },
+                    onmouseleave: function(){ 
+                        if(this.querySelector('.user-refresh-btn')){
+                            this.querySelector('.user-refresh-btn').style.opacity = '0';
+                        }
+                        if(this.querySelector('.user-copy-btn')){
+                            this.querySelector('.user-copy-btn').style.opacity = '0';
+                        }
+                    },
+                    onclick: function(e){
+                        if(e.target.closest('.user-refresh-btn') || e.target.closest('.user-copy-btn')) return;
+                        selectUser(user);
+                    },
+                    onkeydown: function(e){
+                        if(e.key === 'Enter' || e.key === ' '){
+                            e.preventDefault();
+                            selectUser(user);
+                        }
+                    }
+                });
+                
+                function selectUser(user){
+                    saveRecentUser(user.url);
+                    selectedUserUrl = user.url;
+                    userSelectButton.innerHTML = '';
+                    if(user.avatarUrl){
+                        userSelectButton.appendChild(el('img', { 
+                            src: user.avatarUrl, 
+                            style: { width: '28px', height: '28px', borderRadius: '4px', objectFit: 'cover' },
+                            alt: ''
+                        }));
+                    }
+                    userSelectButton.appendChild(el('span', {}, [user.name || user.url]));
+                    userDropdownList.style.display = 'none';
+                    if(autoRefreshInterval){
+                        clearInterval(autoRefreshInterval);
+                        autoRefreshInterval = null;
+                    }
+                }
+                
+                // Avatar with fallback
+                if(user.avatarUrl){
+                    const avatarImg = el('img', { 
+                        src: user.avatarUrl, 
+                        style: { width: '32px', height: '32px', borderRadius: '4px', objectFit: 'cover', flexShrink: 0 },
+                        alt: '',
+                        onerror: function(){
+                            this.src = '';
+                            this.style.display = 'none';
+                            const placeholder = this.nextSibling;
+                            if(placeholder) placeholder.style.display = 'flex';
+                        }
+                    });
+                    userItem.appendChild(avatarImg);
+                }
+                
+                const avatarPlaceholder = el('div', { 
+                    style: { 
+                        width: '32px', 
+                        height: '32px', 
+                        borderRadius: '4px', 
+                        background: user.avatarUrl ? 'transparent' : '#e0e0e0', 
+                        flexShrink: 0,
+                        display: user.avatarUrl ? 'none' : 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '12px',
+                        color: '#999',
+                        fontWeight: '600'
+                    } 
+                }, [user.name ? user.name.charAt(0).toUpperCase() : '?']);
+                userItem.appendChild(avatarPlaceholder);
+                
+                // User info
+                const userInfo = el('div', { style: { flex: '1', minWidth: 0 } });
+                const userName = el('div', { 
+                    style: { 
+                        fontWeight: '600', 
+                        fontSize: '14px',
+                        color: user.name ? '#333' : '#999',
+                        fontStyle: user.name ? 'normal' : 'italic',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                    } 
+                }, [user.name || (user.url.match(/\/user\/([a-z0-9]+)/i)?.[1] || 'Unknown')]);
+                const userUrl = el('div', { 
+                    style: { 
+                        fontSize: '12px', 
+                        color: '#999',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                    } 
+                }, [user.url]);
+                userInfo.appendChild(userName);
+                userInfo.appendChild(userUrl);
+                userItem.appendChild(userInfo);
+                
+                // Action buttons container
+                const actionButtons = el('div', {
+                    style: {
+                        display: 'flex',
+                        gap: '4px',
+                        alignItems: 'center',
+                        flexShrink: 0
+                    }
+                });
+                
+                // Copy URL button
+                const copyBtn = el('button', {
+                    class: 'user-copy-btn',
+                    'aria-label': 'Kopírovat URL uživatele',
+                    title: 'Kopírovat URL',
+                    style: {
+                        padding: '4px 8px',
+                        fontSize: '10px',
+                        background: '#4caf50',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        opacity: '0',
+                        transition: 'opacity 0.2s ease',
+                        flexShrink: 0
+                    },
+                    onclick: async function(e){
+                        e.stopPropagation();
+                        try{
+                            await navigator.clipboard.writeText(user.url);
+                            const originalText = this.textContent;
+                            this.textContent = '✓';
+                            this.style.background = '#2e7d32';
+                            setTimeout(() => {
+                                this.textContent = originalText;
+                                this.style.background = '#4caf50';
+                            }, 1000);
+                        }catch(err){
+                            console.warn('Failed to copy:', err);
+                        }
+                    }
+                }, ['📋']);
+                actionButtons.appendChild(copyBtn);
+                
+                // Refresh button for individual user (appears on hover)
+                if(!user.name || !user.avatarUrl){
+                    const refreshUserBtn = el('button', {
+                        class: 'user-refresh-btn',
+                        'aria-label': 'Obnovit profil uživatele',
+                        title: 'Obnovit profil',
+                        style: {
+                            padding: '4px 8px',
+                            fontSize: '10px',
+                            background: '#0b3d91',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            opacity: '0',
+                            transition: 'opacity 0.2s ease',
+                            flexShrink: 0
+                        },
+                        onclick: async function(e){
+                            e.stopPropagation();
+                            this.disabled = true;
+                            this.textContent = '...';
+                            try{
+                                const profile = await fetchUserProfile(user.url);
+                                if(profile){
+                                    user.name = profile.name;
+                                    user.avatarUrl = profile.avatarUrl;
+                                    updateUserDropdownForAddRecord();
+                                }
+                            }catch(err){
+                                console.warn('Failed to refresh user:', err);
+                            }
+                            this.disabled = false;
+                            this.textContent = '🔄';
+                        }
+                    }, ['🔄']);
+                    actionButtons.appendChild(refreshUserBtn);
+                }
+                
+                userItem.appendChild(actionButtons);
+                userItems.push(userItem);
+                return userItem;
+            }
+            
+            // Render regular users
+            displayRegularUsers.forEach(user => {
+                const userItem = createUserItem(user, false);
+                userDropdownList.appendChild(userItem);
+            });
+        }
+        
+        // Helper functions for keyboard navigation (must be outside createUserItem)
+        function updateSelectedItem(){
+            userItems.forEach((item, idx) => {
+                if(idx === selectedIndex){
+                    item.style.background = '#e3f2fd';
+                    item.style.borderLeft = '3px solid #0b3d91';
+                    item.setAttribute('aria-selected', 'true');
+                    item.focus();
+                }else{
+                    item.style.background = idx % 2 === 0 ? '#fff' : '#fafafa';
+                    item.style.borderLeft = 'none';
+                    item.setAttribute('aria-selected', 'false');
+                }
+            });
+        }
+        
+        function scrollToSelected(){
+            if(selectedIndex >= 0 && selectedIndex < userItems.length){
+                const selectedItem = userItems[selectedIndex];
+                selectedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+        
+        // Debounced search
+        userSearchInput.oninput = function(){
+            clearTimeout(searchDebounceTimeout);
+            searchDebounceTimeout = setTimeout(() => {
+                selectedIndex = -1;
+                updateUserDropdownForAddRecord();
+            }, 200);
+        };
+        
+        // Keyboard navigation
+        userSearchInput.addEventListener('keydown', function(e){
+            if(userDropdownList.style.display !== 'block') return;
+            
+            if(e.key === 'ArrowDown'){
+                e.preventDefault();
+                selectedIndex = Math.min(selectedIndex + 1, userItems.length - 1);
+                updateSelectedItem();
+                scrollToSelected();
+            }else if(e.key === 'ArrowUp'){
+                e.preventDefault();
+                selectedIndex = Math.max(selectedIndex - 1, -1);
+                if(selectedIndex === -1){
+                    userSearchInput.focus();
+                    userItems.forEach(item => {
+                        item.style.background = '';
+                        item.style.borderLeft = 'none';
+                    });
+                }else{
+                    updateSelectedItem();
+                    scrollToSelected();
+                }
+            }else if(e.key === 'Enter' && selectedIndex >= 0){
+                e.preventDefault();
+                const selectedItem = userItems[selectedIndex];
+                if(selectedItem){
+                    const userUrl = selectedItem.getAttribute('data-user-url');
+                    const user = usersList.find(u => u.url === userUrl);
+                    if(user){
+                        selectedItem.click();
+                    }
+                }
+            }else if(e.key === 'Escape'){
+                e.preventDefault();
+                userDropdownList.style.display = 'none';
+                if(autoRefreshInterval){
+                    clearInterval(autoRefreshInterval);
+                    autoRefreshInterval = null;
+                }
+            }
+        });
+        
+        // Initial load
+        updateUserDropdownForAddRecord();
+        
+        // Auto-refresh dropdown every 30 seconds if open
+        let autoRefreshInterval = null;
+        userSelectButton.addEventListener('click', function(){
+            const isOpen = userDropdownList.style.display === 'block';
+            if(isOpen){
+                // Start auto-refresh
+                autoRefreshInterval = setInterval(async () => {
+                    if(userDropdownList.style.display === 'block' && !isRefreshing){
+                        try{
+                            await loadUsers();
+                            updateUserDropdownForAddRecord();
+                        }catch(e){
+                            console.warn('Auto-refresh failed:', e);
+                        }
+                    }
+                }, 30000); // Refresh every 30 seconds
+            } else {
+                // Stop auto-refresh when closed
+                if(autoRefreshInterval){
+                    clearInterval(autoRefreshInterval);
+                    autoRefreshInterval = null;
+                }
+            }
+        });
+        
+        // Close dropdown when clicking outside
+        const closeDropdownHandler = function(e){
+            if(!userDropdownWrapper.contains(e.target)){
+                userDropdownList.style.display = 'none';
+                selectedIndex = -1;
+                if(autoRefreshInterval){
+                    clearInterval(autoRefreshInterval);
+                    autoRefreshInterval = null;
+                }
+            }
+        };
+        document.addEventListener('click', closeDropdownHandler);
+        
+        userDropdownWrapper.appendChild(userSelectButton);
+        userDropdownWrapper.appendChild(userDropdownList);
+        card.appendChild(userLabel);
+        card.appendChild(userDropdownWrapper);
+        
+        // Other fields (rank, resultLabel, resultUrl) - will be auto-filled
+        const rankInput = el('input', { type: 'text', style: { display: 'none' }, id: 'add-record-rank' });
+        const resultLabelInput = el('input', { type: 'text', style: { display: 'none' }, id: 'add-record-result-label' });
+        const resultUrlInput = el('input', { type: 'text', style: { display: 'none' }, id: 'add-record-result-url' });
+        card.appendChild(rankInput);
+        card.appendChild(resultLabelInput);
+        card.appendChild(resultUrlInput);
+        
+        // Buttons
+        const buttonGroup = el('div', { style: { display: 'flex', gap: '12px', marginTop: '24px' } });
+        
+        const saveBtn = el('button', {
+            style: {
+                flex: '1',
+                padding: '14px 20px',
+                background: 'linear-gradient(135deg, #0b3d91 0%, #1e5bb8 100%)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '12px',
+                fontSize: '16px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease'
+            },
+            onclick: async () => {
+                await saveAddRecord();
+            }
+        }, ['💾 Uložit záznam']);
+        
+        const cancelBtn = el('button', {
+            style: {
+                flex: '1',
+                padding: '14px 20px',
+                background: '#e0e0e0',
+                color: '#333',
+                border: 'none',
+                borderRadius: '12px',
+                fontSize: '16px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease'
+            },
+            onclick: () => {
+                removeRoot();
+            }
+        }, ['❌ Zrušit']);
+        
+        buttonGroup.appendChild(saveBtn);
+        buttonGroup.appendChild(cancelBtn);
+        card.appendChild(buttonGroup);
+        
+        root.appendChild(card);
+        
+        // Auto-process input
+        let autoProcessTimeout = null;
+        async function autoProcessInputForAddRecord(){
+            const inputText = mainInput.value.trim();
+            if(!inputText) return;
+            
+            clearTimeout(autoProcessTimeout);
+            autoProcessTimeout = setTimeout(async () => {
+                try{
+                    statusDiv.style.display = 'block';
+                    statusDiv.style.background = '#e3f2fd';
+                    statusDiv.style.color = '#1565c0';
+                    statusDiv.textContent = '🔄 Automatické zpracování...';
+                    
+                    const data = await parseAndFetchGameData(inputText);
+                    
+                    if(data.error){
+                        statusDiv.style.background = '#fff3cd';
+                        statusDiv.style.color = '#856404';
+                        statusDiv.textContent = '⚠️ ' + data.error;
+                        return;
+                    }
+                    
+                    // Auto-detect group (score-time or streaks)
+                    if(data.resultUrl && data.resultUrl.includes('geoguessr.com/game/')){
+                        // It's a game URL, so it's score-time
+                        groupSelect.value = 'score-time';
+                    } else if(inputText.toLowerCase().includes('streak') || inputText.toLowerCase().includes('streaks')){
+                        groupSelect.value = 'streaks';
+                    }
+                    
+                    // Auto-detect mode
+                    const textLower = inputText.toLowerCase();
+                    if(textLower.includes('nmpz')){
+                        modeSelect.value = 'NMPZ';
+                        modeSelect.style.display = 'block';
+                    } else if(textLower.includes('nm') || textLower.includes('no move')){
+                        modeSelect.value = 'NM';
+                        modeSelect.style.display = 'block';
+                    } else if(textLower.includes('moving') || textLower.includes('25k')){
+                        modeSelect.value = 'MOVING';
+                        modeSelect.style.display = 'block';
+                    }
+                    
+                    // Auto-fill fields
+                    if(data.resultLabel) resultLabelInput.value = data.resultLabel;
+                    if(data.resultUrl) resultUrlInput.value = data.resultUrl;
+                    
+                    // Auto-match user
+                    if(data.playerUrl){
+                        let matchedUser = usersList.find(u => u.url === data.playerUrl);
+                        if(!matchedUser){
+                            statusDiv.textContent = '👤 Přidávám nového uživatele...';
+                            try{
+                                const newUser = await addUser(data.playerUrl);
+                                if(newUser){
+                                    await loadUsers();
+                                    matchedUser = usersList.find(u => u.url === data.playerUrl);
+                                }
+                            }catch(e){
+                                console.warn('Failed to auto-add user:', e);
+                            }
+                        }
+                        
+                        if(matchedUser){
+                            selectedUserUrl = matchedUser.url;
+                            userSelectButton.innerHTML = '';
+                            if(matchedUser.avatarUrl){
+                                userSelectButton.appendChild(el('img', { 
+                                    src: matchedUser.avatarUrl, 
+                                    style: { width: '28px', height: '28px', borderRadius: '4px', objectFit: 'cover' },
+                                    alt: ''
+                                }));
+                            }
+                            userSelectButton.appendChild(el('span', {}, [matchedUser.name || matchedUser.url]));
+                        }
+                    }
+                    
+                    statusDiv.style.background = '#d4edda';
+                    statusDiv.style.color = '#155724';
+                    statusDiv.textContent = `✅ Načteno: ${data.resultLabel || 'N/A'}`;
+                }catch(err){
+                    statusDiv.style.background = '#f8d7da';
+                    statusDiv.style.color = '#721c24';
+                    statusDiv.textContent = '❌ Chyba: ' + (err.message || 'Selhalo zpracování');
+                }
+            }, 1000);
+        }
+        
+        async function saveAddRecord(){
+            const groupId = groupSelect.value;
+            const mapUrl = mapInput.value.trim() || null;
+            const mode = modeSelect.value || null;
+            const userUrl = selectedUserUrl;
+            
+            if(!userUrl){
+                statusDiv.style.display = 'block';
+                statusDiv.style.background = '#f8d7da';
+                statusDiv.style.color = '#721c24';
+                statusDiv.textContent = '❌ Prosím vyberte hráče';
+                return;
+            }
+            
+            if(!resultUrlInput.value.trim()){
+                statusDiv.style.display = 'block';
+                statusDiv.style.background = '#f8d7da';
+                statusDiv.style.color = '#721c24';
+                statusDiv.textContent = '❌ Prosím vložte odkaz na hru';
+                return;
+            }
+            
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = '#e3f2fd';
+            statusDiv.style.color = '#1565c0';
+            statusDiv.textContent = '💾 Ukládám...';
+            
+            try{
+                // Find or create card - use mapUrl + variant to find existing card
+                const ref = {
+                    groupId: groupId,
+                    cardIndex: null, // Will be found or created
+                    entryIndex: null, // New entry
+                    mapUrl: mapUrl,
+                    variant: mode
+                };
+                
+                const payload = {
+                    player: usersList.find(u => u.url === userUrl)?.name || '',
+                    playerUrl: userUrl,
+                    resultLabel: resultLabelInput.value.trim(),
+                    resultUrl: resultUrlInput.value.trim(),
+                    rank: rankInput.value.trim() || null // Will be auto-assigned if null
+                };
+                
+                await saveEdit(ref, payload);
+                
+                statusDiv.style.background = '#d4edda';
+                statusDiv.style.color = '#155724';
+                statusDiv.textContent = '✅ Záznam úspěšně přidán!';
+                
+                setTimeout(() => {
+                    removeRoot();
+                    window.location.reload();
+                }, 1500);
+            }catch(err){
+                statusDiv.style.background = '#f8d7da';
+                statusDiv.style.color = '#721c24';
+                statusDiv.textContent = '❌ Chyba: ' + (err.message || 'Selhalo ukládání');
+                console.error('Save error:', err);
+            }
+        }
+        
+        // Load users when opening add record editor
+        (async () => {
+            try {
+                await loadUsers();
+                updateUserDropdownForAddRecord();
+            } catch(e) {
+                console.warn('Failed to load users:', e);
+            }
+        })();
+    }
+
     function uiApp(){
         const root = getRoot();
         root.innerHTML = '';
@@ -1595,7 +2589,11 @@
                 background: '#f8f9fa'
             },
             oninput: function(){
+                clearTimeout(searchDebounceTimeoutMain);
+                searchDebounceTimeoutMain = setTimeout(() => {
+                    selectedIndexMain = -1;
                 updateUserDropdown();
+                }, 200);
             },
             onclick: function(e){
                 e.stopPropagation(); // Prevent dropdown from closing
@@ -1729,7 +2727,39 @@
         let selectedUserUrl = '';
         let progressIndicator = null;
         
+        let searchDebounceTimeoutMain = null;
+        let isRefreshingMain = false;
+        let autoRefreshIntervalMain = null;
+        let selectedIndexMain = -1;
+        let userItemsMain = [];
+        
+        // Get recent users from localStorage (shared with Add Record)
+        function getRecentUsersMain(){
+            try{
+                const recent = localStorage.getItem('gg_recent_users');
+                return recent ? JSON.parse(recent) : [];
+            }catch(e){
+                return [];
+            }
+        }
+        
+        // Save user to recent users (shared with Add Record)
+        function saveRecentUserMain(userUrl){
+            try{
+                const recent = getRecentUsersMain();
+                const index = recent.indexOf(userUrl);
+                if(index > -1) recent.splice(index, 1);
+                recent.unshift(userUrl);
+                // Keep only last 10
+                if(recent.length > 10) recent.pop();
+                localStorage.setItem('gg_recent_users', JSON.stringify(recent));
+            }catch(e){}
+        }
+        
         function updateUserDropdown(){
+            selectedIndexMain = -1;
+            userItemsMain = [];
+            
             // Update button with user count (only if not showing selected user)
             if(!selectedUserUrl){
                 const buttonSpans = userSelectButton.querySelectorAll('span');
@@ -1754,6 +2784,61 @@
                 userDropdownList.appendChild(userSearchInput);
                 userSearchInput.value = savedSearch;
             }
+            
+            // Get recent users
+            const recentUrls = getRecentUsersMain();
+            const recentUsers = recentUrls.map(url => usersList.find(u => u.url === url)).filter(Boolean);
+            
+            // Add refresh button at top
+            const refreshBtn = el('button', {
+                tabindex: '-1',
+                style: {
+                    width: '100%',
+                    padding: '8px 12px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    background: isRefreshingMain ? '#e0e0e0' : '#f8f9fa',
+                    color: isRefreshingMain ? '#999' : '#0b3d91',
+                    border: 'none',
+                    borderBottom: '1px solid #e0e0e0',
+                    cursor: isRefreshingMain ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    transition: 'all 0.2s ease'
+                },
+                disabled: isRefreshingMain,
+                onclick: async function(e){
+                    e.stopPropagation();
+                    if(isRefreshingMain) return;
+                    isRefreshingMain = true;
+                    this.textContent = '🔄 Obnovuji...';
+                    this.style.background = '#e0e0e0';
+                    this.style.color = '#999';
+                    
+                    try{
+                        await loadUsers();
+                        updateUserDropdown();
+                        this.textContent = '✅ Obnoveno';
+                        setTimeout(() => {
+                            this.textContent = '🔄 Obnovit seznam';
+                            this.style.background = '#f8f9fa';
+                            this.style.color = '#0b3d91';
+                            isRefreshingMain = false;
+                        }, 1000);
+                    }catch(e){
+                        this.textContent = '❌ Chyba';
+                        setTimeout(() => {
+                            this.textContent = '🔄 Obnovit seznam';
+                            this.style.background = '#f8f9fa';
+                            this.style.color = '#0b3d91';
+                            isRefreshingMain = false;
+                        }, 2000);
+                    }
+                }
+            }, ['🔄 Obnovit seznam']);
+            userDropdownList.appendChild(refreshBtn);
             
             // Show loading indicator with progress if enriching
             if(enrichmentPromise){
@@ -1851,32 +2936,107 @@
                 progressIndicator = loadingContainer;
             }
             
+            // Sort users: with names first, then by name alphabetically
+            const sortedUsers = [...usersList].sort((a, b) => {
+                const aHasName = !!(a.name && a.name.trim());
+                const bHasName = !!(b.name && b.name.trim());
+                if(aHasName && !bHasName) return -1;
+                if(!aHasName && bHasName) return 1;
+                if(aHasName && bHasName) {
+                    return (a.name || '').localeCompare(b.name || '', 'cs');
+                }
+                return 0;
+            });
+            
             // Filter users - show only those that match search or all if no search
-            const searchTerm = userSearchInput && userSearchInput.value ? userSearchInput.value.toLowerCase() : '';
+            const searchTerm = userSearchInput && userSearchInput.value ? userSearchInput.value.toLowerCase().trim() : '';
             const filteredUsers = searchTerm 
-                ? usersList.filter(u => {
+                ? sortedUsers.filter(u => {
                     const name = (u.name || '').toLowerCase();
                     const urlId = (u.url.match(/\/user\/([a-z0-9]+)/i)?.[1] || '').toLowerCase();
-                    return name.includes(searchTerm) || urlId.includes(searchTerm) || u.url.toLowerCase().includes(searchTerm);
+                    const urlLower = u.url.toLowerCase();
+                    return name.includes(searchTerm) || urlId.includes(searchTerm) || urlLower.includes(searchTerm);
                 })
-                : usersList;
+                : sortedUsers;
             
-            if(filteredUsers.length === 0 && searchTerm){
+            // Separate recent users from filtered (only if not searching)
+            const displayRecentUsers = !searchTerm && recentUsers.length > 0 ? recentUsers : [];
+            const displayRegularUsers = searchTerm ? filteredUsers : filteredUsers.filter(u => !recentUrls.includes(u.url));
+            
+            // Show recent users section
+            if(displayRecentUsers.length > 0){
+                const recentHeader = el('div', {
+                    style: {
+                        padding: '8px 12px',
+                        fontSize: '11px',
+                        fontWeight: '600',
+                        color: '#0b3d91',
+                        background: '#e3f2fd',
+                        borderBottom: '1px solid #bbdefb',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                    }
+                }, ['🕒 Nedávní uživatelé']);
+                userDropdownList.appendChild(recentHeader);
+                
+                displayRecentUsers.forEach(user => {
+                    const userItem = createUserItemMain(user, true);
+                    userDropdownList.appendChild(userItem);
+                });
+                
+                // Separator
+                const separator = el('div', {
+                    style: {
+                        padding: '8px 12px',
+                        fontSize: '11px',
+                        fontWeight: '600',
+                        color: '#666',
+                        background: '#f8f9fa',
+                        borderBottom: '1px solid #e0e0e0',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                    }
+                }, ['Všichni uživatelé']);
+                userDropdownList.appendChild(separator);
+            }
+            
+            // Show count if filtered
+            if(filteredUsers.length !== sortedUsers.length){
+                const countInfo = el('div', {
+                    style: {
+                        padding: '6px 12px',
+                        fontSize: '11px',
+                        color: '#666',
+                        background: '#f8f9fa',
+                        borderBottom: '1px solid #e0e0e0',
+                        textAlign: 'center'
+                    }
+                }, [`Zobrazeno ${filteredUsers.length} z ${sortedUsers.length} uživatelů`]);
+                userDropdownList.appendChild(countInfo);
+            }
+            
+            if(displayRegularUsers.length === 0 && displayRecentUsers.length === 0){
                 const noResults = el('div', {
                     style: {
                         padding: '20px',
                         textAlign: 'center',
                         color: '#999',
-                        fontSize: '13px',
-                        fontStyle: 'italic'
+                        fontSize: '14px'
                     }
-                }, ['Žádní uživatelé nenalezeni']);
+                }, [searchTerm ? 'Žádní uživatelé nenalezeni' : 'Žádní uživatelé']);
                 userDropdownList.appendChild(noResults);
                 return; // Don't render users if no results
             }
             
-            filteredUsers.forEach(user => {
+            // Create user item function
+            function createUserItemMain(user, isRecent = false){
+                const itemIndex = userItemsMain.length;
                 const item = el('div', {
+                    'data-user-index': itemIndex,
+                    'data-user-url': user.url,
+                    role: 'option',
+                    tabindex: '-1',
+                    className: 'user-item',
                     style: {
                         padding: '10px 12px',
                         display: 'flex',
@@ -1884,17 +3044,42 @@
                         gap: '10px',
                         cursor: 'pointer',
                         borderBottom: '1px solid #f0f0f0',
-                        transition: 'background 0.2s'
+                        transition: 'all 0.2s ease',
+                        position: 'relative',
+                        outline: 'none'
                     },
-                    onmouseenter: (e) => {
-                        if(!e.target.closest('.user-item')) return;
-                        e.target.closest('.user-item').style.background = '#f5f5f5';
+                    onmouseenter: function(){
+                        selectedIndexMain = itemIndex;
+                        updateSelectedItemMain();
+                        if(this.querySelector('.user-refresh-btn')){
+                            this.querySelector('.user-refresh-btn').style.opacity = '1';
+                        }
+                        if(this.querySelector('.user-copy-btn')){
+                            this.querySelector('.user-copy-btn').style.opacity = '1';
+                        }
                     },
-                    onmouseleave: (e) => {
-                        if(!e.target.closest('.user-item')) return;
-                        e.target.closest('.user-item').style.background = '#fff';
+                    onmouseleave: function(){
+                        if(this.querySelector('.user-refresh-btn')){
+                            this.querySelector('.user-refresh-btn').style.opacity = '0';
+                        }
+                        if(this.querySelector('.user-copy-btn')){
+                            this.querySelector('.user-copy-btn').style.opacity = '0';
+                        }
                     },
-                    onclick: async () => {
+                    onclick: async function(e){
+                        if(e.target.closest('.user-refresh-btn') || e.target.closest('.user-copy-btn')) return;
+                        selectUserMain(user);
+                    },
+                    onkeydown: function(e){
+                        if(e.key === 'Enter' || e.key === ' '){
+                            e.preventDefault();
+                            selectUserMain(user);
+                        }
+                    }
+                });
+                
+                function selectUserMain(user){
+                    saveRecentUserMain(user.url);
                         selectedUserUrl = user.url;
                         userDropdownList.style.display = 'none';
                         
@@ -1911,15 +3096,16 @@
                                 style: { width: '28px', height: '28px', borderRadius: '4px', background: '#e0e0e0', flexShrink: 0 }
                             }));
                         }
-                        userSelectButton.appendChild(el('span', {}, [user.name || 'Loading...']));
-                        
-                        // Fetch name if not cached
-                        if(!user.name || !user.avatarUrl){
-                            statusDiv.style.display = 'block';
-                            statusDiv.style.background = '#fff3cd';
-                            statusDiv.style.color = '#856404';
-                            statusDiv.textContent = 'Loading user info...';
-                            
+                    userSelectButton.appendChild(el('span', {}, [user.name || user.url]));
+                    
+                    // Fill form fields
+                    player.value = user.name || '';
+                    playerUrl.value = user.url;
+                    
+                    // Auto-enrich user if needed (in background, don't block)
+                    if(!user.name || !user.avatarUrl){
+                        (async () => {
+                            try{
                             const userInfo = await fetchUserProfile(user.url);
                             if(userInfo){
                                 user.name = userInfo.name;
@@ -1939,53 +3125,278 @@
                                     }));
                                 }
                                 userSelectButton.appendChild(el('span', {}, [user.name || user.url]));
+                                    // Update form fields
+                                    player.value = user.name || '';
+                                }
+                            }catch(e){
+                                console.warn('Failed to enrich user:', e);
                             }
-                            statusDiv.style.display = 'none';
-                        }
-                        
-                        // Fill form fields
-                        player.value = user.name || '';
-                        playerUrl.value = user.url;
+                        })();
                     }
-                });
-                item.className = 'user-item';
+                    
+                    if(autoRefreshIntervalMain){
+                        clearInterval(autoRefreshIntervalMain);
+                        autoRefreshIntervalMain = null;
+                    }
+                }
                 
-                // Avatar
+                // Avatar with fallback
                 if(user.avatarUrl){
                     const avatarImg = el('img', { 
                         src: user.avatarUrl, 
                         style: { width: '32px', height: '32px', borderRadius: '4px', objectFit: 'cover', flexShrink: 0 },
                         alt: '',
                         onerror: function(){
-                            // Fallback if image fails to load
+                            this.src = '';
                             this.style.display = 'none';
-                            const placeholder = el('div', { 
-                                style: { width: '32px', height: '32px', borderRadius: '4px', background: '#e0e0e0', flexShrink: 0 }
-                            });
-                            this.parentNode.replaceChild(placeholder, this);
+                            const placeholder = this.nextSibling;
+                            if(placeholder) placeholder.style.display = 'flex';
                         }
                     });
                     item.appendChild(avatarImg);
-                }else{
-                    item.appendChild(el('div', { 
-                        style: { width: '32px', height: '32px', borderRadius: '4px', background: '#e0e0e0', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#999' },
-                        textContent: '?'
-                    }));
                 }
                 
-                // Name or URL
-                const displayName = user.name || (user.url.match(/\/user\/([a-z0-9]+)/i)?.[1] || user.url);
-                item.appendChild(el('span', { style: { flex: 1, color: user.name ? '#333' : '#999', fontStyle: user.name ? 'normal' : 'italic' } }, [displayName]));
-                userDropdownList.appendChild(item);
+                const avatarPlaceholder = el('div', { 
+                    style: { 
+                        width: '32px', 
+                        height: '32px', 
+                        borderRadius: '4px', 
+                        background: user.avatarUrl ? 'transparent' : '#e0e0e0', 
+                        flexShrink: 0,
+                        display: user.avatarUrl ? 'none' : 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '12px',
+                        color: '#999',
+                        fontWeight: '600'
+                    } 
+                }, [user.name ? user.name.charAt(0).toUpperCase() : '?']);
+                item.appendChild(avatarPlaceholder);
+                
+                // User info
+                const userInfo = el('div', { style: { flex: '1', minWidth: 0 } });
+                const displayName = user.name || (user.url.match(/\/user\/([a-z0-9]+)/i)?.[1] || 'Unknown');
+                const userName = el('div', { 
+                    style: { 
+                        fontWeight: '600', 
+                        fontSize: '14px',
+                        color: user.name ? '#333' : '#999',
+                        fontStyle: user.name ? 'normal' : 'italic',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                    } 
+                }, [displayName]);
+                const userUrl = el('div', { 
+                    style: { 
+                        fontSize: '12px', 
+                        color: '#999',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                    } 
+                }, [user.url]);
+                userInfo.appendChild(userName);
+                userInfo.appendChild(userUrl);
+                item.appendChild(userInfo);
+                
+                // Action buttons container
+                const actionButtons = el('div', {
+                    style: {
+                        display: 'flex',
+                        gap: '4px',
+                        alignItems: 'center',
+                        flexShrink: 0
+                    }
+                });
+                
+                // Copy URL button
+                const copyBtn = el('button', {
+                    class: 'user-copy-btn',
+                    'aria-label': 'Kopírovat URL uživatele',
+                    title: 'Kopírovat URL',
+                    style: {
+                        padding: '4px 8px',
+                        fontSize: '10px',
+                        background: '#4caf50',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        opacity: '0',
+                        transition: 'opacity 0.2s ease',
+                        flexShrink: 0
+                    },
+                    onclick: async function(e){
+                        e.stopPropagation();
+                        try{
+                            await navigator.clipboard.writeText(user.url);
+                            const originalText = this.textContent;
+                            this.textContent = '✓';
+                            this.style.background = '#2e7d32';
+                            setTimeout(() => {
+                                this.textContent = originalText;
+                                this.style.background = '#4caf50';
+                            }, 1000);
+                        }catch(err){
+                            console.warn('Failed to copy:', err);
+                        }
+                    }
+                }, ['📋']);
+                actionButtons.appendChild(copyBtn);
+                
+                // Refresh button for individual user (appears on hover)
+                if(!user.name || !user.avatarUrl){
+                    const refreshUserBtn = el('button', {
+                        class: 'user-refresh-btn',
+                        'aria-label': 'Obnovit profil uživatele',
+                        title: 'Obnovit profil',
+                        style: {
+                            padding: '4px 8px',
+                            fontSize: '10px',
+                            background: '#0b3d91',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            opacity: '0',
+                            transition: 'opacity 0.2s ease',
+                            flexShrink: 0
+                        },
+                        onclick: async function(e){
+                            e.stopPropagation();
+                            this.disabled = true;
+                            this.textContent = '...';
+                            try{
+                                const profile = await fetchUserProfile(user.url);
+                                if(profile){
+                                    user.name = profile.name;
+                                    user.avatarUrl = profile.avatarUrl;
+                                    updateUserDropdown();
+                                }
+                            }catch(err){
+                                console.warn('Failed to refresh user:', err);
+                            }
+                            this.disabled = false;
+                            this.textContent = '🔄';
+                        }
+                    }, ['🔄']);
+                    actionButtons.appendChild(refreshUserBtn);
+                }
+                
+                item.appendChild(actionButtons);
+                userItemsMain.push(item);
+                return item;
+            }
+            
+            // Render regular users
+            displayRegularUsers.forEach(user => {
+                const userItem = createUserItemMain(user, false);
+                userDropdownList.appendChild(userItem);
             });
         }
         
-        // Close dropdown when clicking outside
-        document.addEventListener('click', (e) => {
-            if(!userDropdownWrapper.contains(e.target)){
-                userDropdownList.style.display = 'none';
+        // Helper functions for keyboard navigation (must be outside createUserItemMain)
+        function updateSelectedItemMain(){
+            userItemsMain.forEach((item, idx) => {
+                if(idx === selectedIndexMain){
+                    item.style.background = '#e3f2fd';
+                    item.style.borderLeft = '3px solid #0b3d91';
+                    item.setAttribute('aria-selected', 'true');
+                    item.focus();
+                }else{
+                    item.style.background = idx % 2 === 0 ? '#fff' : '#fafafa';
+                    item.style.borderLeft = 'none';
+                    item.setAttribute('aria-selected', 'false');
+                }
+            });
+        }
+        
+        function scrollToSelectedMain(){
+            if(selectedIndexMain >= 0 && selectedIndexMain < userItemsMain.length){
+                const selectedItem = userItemsMain[selectedIndexMain];
+                selectedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+        
+        // Auto-refresh dropdown every 30 seconds if open
+        userSelectButton.addEventListener('click', function(){
+            const isOpen = userDropdownList.style.display === 'block';
+            if(isOpen){
+                // Start auto-refresh
+                autoRefreshIntervalMain = setInterval(async () => {
+                    if(userDropdownList.style.display === 'block' && !isRefreshingMain){
+                        try{
+                            await loadUsers();
+                            updateUserDropdown();
+                        }catch(e){
+                            console.warn('Auto-refresh failed:', e);
+                        }
+                    }
+                }, 30000); // Refresh every 30 seconds
+            } else {
+                // Stop auto-refresh when closed
+                if(autoRefreshIntervalMain){
+                    clearInterval(autoRefreshIntervalMain);
+                    autoRefreshIntervalMain = null;
+                }
             }
         });
+        
+        // Keyboard navigation for main dropdown
+        userSearchInput.addEventListener('keydown', function(e){
+            if(userDropdownList.style.display !== 'block') return;
+            
+            if(e.key === 'ArrowDown'){
+                e.preventDefault();
+                selectedIndexMain = Math.min(selectedIndexMain + 1, userItemsMain.length - 1);
+                updateSelectedItemMain();
+                scrollToSelectedMain();
+            }else if(e.key === 'ArrowUp'){
+                e.preventDefault();
+                selectedIndexMain = Math.max(selectedIndexMain - 1, -1);
+                if(selectedIndexMain === -1){
+                    userSearchInput.focus();
+                    userItemsMain.forEach(item => {
+                        item.style.background = '';
+                        item.style.borderLeft = 'none';
+                    });
+                }else{
+                    updateSelectedItemMain();
+                    scrollToSelectedMain();
+                }
+            }else if(e.key === 'Enter' && selectedIndexMain >= 0){
+                e.preventDefault();
+                const selectedItem = userItemsMain[selectedIndexMain];
+                if(selectedItem){
+                    const userUrl = selectedItem.getAttribute('data-user-url');
+                    const user = usersList.find(u => u.url === userUrl);
+                    if(user){
+                        selectedItem.click();
+                    }
+                }
+            }else if(e.key === 'Escape'){
+                e.preventDefault();
+                userDropdownList.style.display = 'none';
+                if(autoRefreshIntervalMain){
+                    clearInterval(autoRefreshIntervalMain);
+                    autoRefreshIntervalMain = null;
+                }
+            }
+        });
+        
+        // Close dropdown when clicking outside
+        const closeDropdownHandlerMain = function(e){
+            if(!userDropdownWrapper.contains(e.target)){
+                userDropdownList.style.display = 'none';
+                selectedIndexMain = -1;
+                if(autoRefreshIntervalMain){
+                    clearInterval(autoRefreshIntervalMain);
+                    autoRefreshIntervalMain = null;
+            }
+            }
+        };
+        document.addEventListener('click', closeDropdownHandlerMain);
         
         // Load users on open - DON'T auto-enrich to avoid rate limits
         loadUsers().then(() => {
@@ -3623,11 +5034,11 @@
         if(!card) {
             console.warn(`⚠️ Card not found by any method, creating new one...`);
             if(ref.cardIndex != null && ref.cardIndex >= 0) {
-                // Fill up to the required index
-                while(group.cards.length <= ref.cardIndex) {
-                    group.cards.push({ title: 'New Card', entries: [] });
-                }
-                card = group.cards[ref.cardIndex];
+            // Fill up to the required index
+            while(group.cards.length <= ref.cardIndex) {
+                group.cards.push({ title: 'New Card', entries: [] });
+            }
+            card = group.cards[ref.cardIndex];
                 if(ref.mapUrl) card.mapUrl = ref.mapUrl;
                 console.log(`✅ Created card at index ${ref.cardIndex}`);
             } else {
@@ -4119,43 +5530,40 @@
         const existing = document.getElementById('admin-mode-indicator');
         if(existing) existing.remove();
         
-        // Create admin indicator
-        const indicator = document.createElement('div');
-        indicator.id = 'admin-mode-indicator';
-        indicator.style.cssText = `
-            position: fixed;
-            top: 80px;
-            right: 20px;
-            background: #28a745;
-            color: white;
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-size: 12px;
-            font-weight: bold;
-            z-index: 10000;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        `;
-        indicator.innerHTML = `
-            <span>🔧 Admin Mode Active</span>
-            <button style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;" onclick="localStorage.removeItem('gg_admin_data'); localStorage.removeItem('gg_admin_ok'); location.reload();">Logout</button>
-        `;
-        document.body.appendChild(indicator);
+        // Create admin sidebar (similar to toc-sidebar)
+        const sidebar = document.createElement('aside');
+        sidebar.id = 'admin-mode-indicator';
+        sidebar.className = 'admin-sidebar';
+        sidebar.setAttribute('aria-hidden', 'false');
         
-        // Auto-hide after 5 seconds, but show on hover
-        let hideTimeout;
-        indicator.addEventListener('mouseenter', () => {
-            clearTimeout(hideTimeout);
-            indicator.style.opacity = '1';
-        });
-        indicator.addEventListener('mouseleave', () => {
-            hideTimeout = setTimeout(() => {
-                indicator.style.opacity = '0.7';
-            }, 2000);
-        });
+        const content = el('div', { class: 'admin-sidebar-content' });
+        
+        // Title
+        const title = el('div', { class: 'admin-sidebar-title' }, ['🔧 Admin']);
+        content.appendChild(title);
+        
+        // Add Record button
+        const addRecordBtn = el('button', {
+            class: 'admin-sidebar-button admin-sidebar-button--primary',
+            onclick: () => {
+                openAddRecordEditor();
+            }
+        }, ['➕ Přidat záznam']);
+        content.appendChild(addRecordBtn);
+        
+        // Logout button
+        const logoutBtn = el('button', {
+            class: 'admin-sidebar-button admin-sidebar-button--secondary',
+            onclick: () => {
+                localStorage.removeItem('gg_admin_data');
+                localStorage.removeItem('gg_admin_ok');
+                location.reload();
+            }
+        }, ['🚪 Odhlásit']);
+        content.appendChild(logoutBtn);
+        
+        sidebar.appendChild(content);
+        document.body.appendChild(sidebar);
     }
 
     function showMaintenanceOverlay(){
