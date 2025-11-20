@@ -81,7 +81,7 @@
     function clearAdminSession(){
         localStorage.removeItem('gg_admin_data');
         localStorage.removeItem('gg_admin_ok');
-        contextMenuBound = false; // Reset context menu binding
+        // Context menu removed
         const indicator = document.getElementById('admin-mode-indicator');
         if(indicator) indicator.remove();
         // Show maintenance overlay after logout
@@ -140,6 +140,1176 @@
             }
         }catch(_){ }
         return '';
+    }
+
+    async function openUnifiedRecordEditor(initialRecord = null){
+        const root = getRoot();
+        root.innerHTML = '';
+        root.style.zIndex = '100001';
+        root.style.background = 'rgba(0,0,0,0.95)';
+        
+        const card = el('div', { 
+            style: { 
+                maxWidth: '700px', 
+                margin: '40px auto', 
+                background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)', 
+                borderRadius: '20px', 
+                padding: '32px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+                fontFamily: 'Quicksand, sans-serif',
+                position: 'relative'
+            } 
+        });
+        
+        const header = el('div', { style: { marginBottom: '24px', textAlign: 'center' } });
+        const title = el('h2', { 
+            style: { 
+                fontSize: '28px', 
+                fontWeight: '700', 
+                color: '#0b3d91', 
+                margin: '0 0 8px 0',
+                fontFamily: 'Quicksand, sans-serif'
+            } 
+        }, [initialRecord ? '✏️ Upravit záznam' : '➕ Přidat/Upravit záznam']);
+        header.appendChild(title);
+        
+        const closeBtn = el('button', {
+            onclick: () => { removeRoot(); },
+            style: {
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                border: 'none',
+                background: 'rgba(0,0,0,0.1)',
+                color: '#666',
+                cursor: 'pointer',
+                fontSize: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s ease',
+                fontFamily: 'Quicksand, sans-serif'
+            },
+            onmouseenter: function(){
+                this.style.background = 'rgba(0,0,0,0.15)';
+                this.style.transform = 'rotate(90deg)';
+            },
+            onmouseleave: function(){
+                this.style.background = 'rgba(0,0,0,0.1)';
+                this.style.transform = 'rotate(0deg)';
+            }
+        }, ['×']);
+        card.appendChild(closeBtn);
+        card.appendChild(header);
+        
+        const statusDiv = el('div', { 
+            style: { 
+                marginBottom: '16px', 
+                padding: '12px 16px', 
+                borderRadius: '10px', 
+                fontSize: '14px', 
+                display: 'none', 
+                transition: 'all 0.3s ease', 
+                fontWeight: '500', 
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)' 
+            } 
+        });
+        card.appendChild(statusDiv);
+        
+        // Detection info
+        const detectionInfo = el('div', {
+            id: 'detection-info',
+            style: {
+                marginBottom: '16px',
+                padding: '12px 16px',
+                borderRadius: '10px',
+                fontSize: '13px',
+                display: 'none',
+                background: '#e3f2fd',
+                color: '#1565c0',
+                border: '1px solid rgba(21,101,192,0.2)'
+            }
+        });
+        card.appendChild(detectionInfo);
+        
+        // Main input: game URL or text
+        const mainInputLabel = el('label', { 
+            style: { 
+                display: 'block', 
+                marginBottom: '8px', 
+                fontWeight: '600', 
+                color: '#333',
+                fontSize: '14px'
+            } 
+        }, ['📋 Vložte odkaz na hru nebo text záznamu']);
+        const mainInput = el('textarea', {
+            style: {
+                width: '100%',
+                padding: '12px',
+                borderRadius: '10px',
+                border: '2px solid #e0e0e0',
+                fontSize: '14px',
+                fontFamily: 'monospace',
+                resize: 'vertical',
+                minHeight: '80px',
+                marginBottom: '16px',
+                transition: 'border-color 0.3s ease'
+            },
+            placeholder: 'Vložte odkaz na GeoGuessr hru nebo zkopírujte text záznamu...\nPříklad: https://www.geoguessr.com/game/ABC123 AI Generated World NMPZ 23907',
+            oninput: function(){
+                this.style.borderColor = '#0b3d91';
+                autoProcessUnifiedInput();
+            }
+        });
+        card.appendChild(mainInputLabel);
+        card.appendChild(mainInput);
+        
+        // Group selection
+        const groupLabel = el('label', { 
+            style: { 
+                display: 'block', 
+                marginBottom: '8px', 
+                fontWeight: '600', 
+                color: '#333',
+                fontSize: '14px'
+            } 
+        }, ['📂 Kategorie']);
+        const groupSelect = el('select', {
+            style: {
+                width: '100%',
+                padding: '12px',
+                borderRadius: '10px',
+                border: '2px solid #e0e0e0',
+                fontSize: '14px',
+                marginBottom: '16px',
+                background: 'white',
+                cursor: 'pointer'
+            },
+            id: 'unified-group-select'
+        });
+        groupSelect.appendChild(el('option', { value: 'score-time' }, ['Skóre/Čas']));
+        groupSelect.appendChild(el('option', { value: 'streaks' }, ['Streaky']));
+        card.appendChild(groupLabel);
+        card.appendChild(groupSelect);
+        
+        // Map selection dropdown
+        let selectedMapUrl = initialRecord?.mapUrl || null;
+        const mapLabel = el('label', { 
+            style: { 
+                display: 'block', 
+                marginBottom: '8px', 
+                fontWeight: '600', 
+                color: '#333',
+                fontSize: '14px'
+            } 
+        }, ['🗺️ Mapa']);
+        const mapDropdownWrapper = el('div', { style: { marginBottom: '16px', position: 'relative' } });
+        const mapSelectButton = el('button', {
+            style: {
+                width: '100%',
+                padding: '12px',
+                borderRadius: '10px',
+                border: '2px solid #e0e0e0',
+                fontSize: '14px',
+                background: 'white',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                textAlign: 'left'
+            },
+            id: 'unified-map-select',
+            onclick: async function(){
+                // Ensure maps are loaded
+                if(!mapsList || mapsList.length === 0){
+                    await loadMaps();
+                }
+                
+                // Toggle map dropdown
+                const existingDropdown = document.getElementById('unified-map-dropdown');
+                if(existingDropdown){
+                    existingDropdown.remove();
+                    return;
+                }
+                
+                // Create enhanced dropdown with images and info
+                const mapDropdown = el('div', {
+                    id: 'unified-map-dropdown',
+                    style: {
+                        position: 'absolute',
+                        top: '100%',
+                        left: '0',
+                        right: '0',
+                        background: 'white',
+                        border: '2px solid #e0e0e0',
+                        borderRadius: '10px',
+                        marginTop: '4px',
+                        maxHeight: '400px',
+                        overflowY: 'auto',
+                        zIndex: '100002',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                    }
+                });
+                
+                const searchInput = el('input', {
+                    type: 'text',
+                    placeholder: '🔍 Hledat mapu...',
+                    style: {
+                        width: '100%',
+                        padding: '12px',
+                        border: 'none',
+                        borderBottom: '1px solid #e0e0e0',
+                        fontSize: '14px',
+                        outline: 'none',
+                        position: 'sticky',
+                        top: '0',
+                        background: 'white',
+                        zIndex: '1'
+                    }
+                });
+                mapDropdown.appendChild(searchInput);
+                
+                const mapList = el('div', {
+                    style: {
+                        maxHeight: '350px',
+                        overflowY: 'auto'
+                    }
+                });
+                
+                let filteredMaps = mapsList || [];
+                
+                function renderMaps(){
+                    mapList.innerHTML = '';
+                    
+                    if(filteredMaps.length === 0){
+                        const noResults = el('div', {
+                            style: {
+                                padding: '20px',
+                                textAlign: 'center',
+                                color: '#666',
+                                fontSize: '14px'
+                            }
+                        }, ['Žádné mapy nenalezeny']);
+                        mapList.appendChild(noResults);
+                        return;
+                    }
+                    
+                    filteredMaps.forEach(map => {
+                        const mapItem = el('div', {
+                            style: {
+                                padding: '12px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                borderBottom: '1px solid #f0f0f0',
+                                transition: 'background 0.2s ease'
+                            },
+                            onmouseenter: function(){ 
+                                this.style.background = '#f5f5f5'; 
+                            },
+                            onmouseleave: function(){ 
+                                this.style.background = 'white'; 
+                            },
+                            onclick: () => {
+                                selectedMapUrl = map.url;
+                                mapSelectButton.innerHTML = '';
+                                
+                                // Map image (heroImage or coverAvatar)
+                                const mapImage = map.heroImage || map.coverAvatar;
+                                if(mapImage){
+                                    const img = el('img', { 
+                                        src: mapImage, 
+                                        style: { width: '28px', height: '28px', borderRadius: '4px', objectFit: 'cover' },
+                                        alt: '',
+                                        onerror: function(){ this.style.display = 'none'; }
+                                    });
+                                    mapSelectButton.appendChild(img);
+                                }
+                                
+                                mapSelectButton.appendChild(el('span', {}, [map.name || map.url]));
+                                mapDropdown.remove();
+                            }
+                        });
+                        
+                        // Map image container
+                        const imageContainer = el('div', {
+                            style: {
+                                width: '64px',
+                                height: '48px',
+                                borderRadius: '6px',
+                                overflow: 'hidden',
+                                flexShrink: '0',
+                                background: '#f0f0f0',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                position: 'relative'
+                            }
+                        });
+                        
+                        const mapImage = map.heroImage || map.coverAvatar;
+                        if(mapImage){
+                            const img = el('img', {
+                                src: mapImage,
+                                style: { width: '100%', height: '100%', objectFit: 'cover' },
+                                alt: '',
+                                onerror: function(){ 
+                                    this.style.display = 'none';
+                                    imageContainer.innerHTML = '🗺️';
+                                    imageContainer.style.fontSize = '24px';
+                                }
+                            });
+                            imageContainer.appendChild(img);
+                        } else {
+                            imageContainer.innerHTML = '🗺️';
+                            imageContainer.style.fontSize = '24px';
+                        }
+                        mapItem.appendChild(imageContainer);
+                        
+                        // Map info
+                        const infoContainer = el('div', {
+                            style: {
+                                flex: '1',
+                                minWidth: '0'
+                            }
+                        });
+                        
+                        const nameRow = el('div', {
+                            style: {
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                marginBottom: '4px',
+                                flexWrap: 'wrap'
+                            }
+                        });
+                        
+                        const nameEl = el('span', {
+                            style: {
+                                fontWeight: '600',
+                                fontSize: '14px',
+                                color: '#333',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                flex: '1',
+                                minWidth: '150px'
+                            }
+                        }, [map.name || 'Neznámá mapa']);
+                        nameRow.appendChild(nameEl);
+                        
+                        // Stats chips
+                        if(map.difficulty){
+                            nameRow.appendChild(el('span', {
+                                style: {
+                                    fontSize: '11px',
+                                    background: '#e8f5e9',
+                                    color: '#2e7d32',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    fontWeight: '500',
+                                    textTransform: 'capitalize'
+                                }
+                            }, [map.difficulty]));
+                        }
+                        
+                        if(map.coordinateCount){
+                            nameRow.appendChild(el('span', {
+                                style: {
+                                    fontSize: '11px',
+                                    background: '#e3f2fd',
+                                    color: '#1565c0',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    fontWeight: '500'
+                                }
+                            }, [`${map.coordinateCount} locs`]));
+                        }
+                        
+                        infoContainer.appendChild(nameRow);
+                        
+                        // Additional info row
+                        const infoRow = el('div', {
+                            style: {
+                                fontSize: '12px',
+                                color: '#666',
+                                display: 'flex',
+                                gap: '12px',
+                                flexWrap: 'wrap'
+                            }
+                        });
+                        
+                        if(map.plays){
+                            infoRow.appendChild(el('span', {}, [`${map.plays.toLocaleString()} plays`]));
+                        }
+                        if(map.likes){
+                            infoRow.appendChild(el('span', {}, [`${map.likes.toLocaleString()} likes`]));
+                        }
+                        if(map.creator?.nick){
+                            infoRow.appendChild(el('span', {
+                                style: { fontStyle: 'italic' }
+                            }, [`by ${map.creator.nick}`]));
+                        }
+                        
+                        if(infoRow.children.length > 0){
+                            infoContainer.appendChild(infoRow);
+                        }
+                        
+                        // URL (truncated)
+                        const urlEl = el('div', {
+                            style: {
+                                fontSize: '11px',
+                                color: '#999',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                marginTop: '2px'
+                            }
+                        }, [map.url]);
+                        infoContainer.appendChild(urlEl);
+                        
+                        mapItem.appendChild(infoContainer);
+                        mapList.appendChild(mapItem);
+                    });
+                }
+                
+                searchInput.addEventListener('input', (e) => {
+                    const query = e.target.value.toLowerCase();
+                    filteredMaps = mapsList.filter(m => {
+                        const name = (m.name || '').toLowerCase();
+                        const creator = (m.creator?.nick || '').toLowerCase();
+                        const url = (m.url || '').toLowerCase();
+                        return name.includes(query) || creator.includes(query) || url.includes(query);
+                    });
+                    renderMaps();
+                });
+                
+                mapDropdown.appendChild(mapList);
+                mapDropdownWrapper.style.position = 'relative';
+                mapDropdownWrapper.appendChild(mapDropdown);
+                renderMaps();
+                searchInput.focus();
+            }
+        }, ['Vyberte mapu...']);
+        
+        // Also allow manual URL input
+        const mapInput = el('input', {
+            type: 'text',
+            style: {
+                width: '100%',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                border: '1px solid #e0e0e0',
+                fontSize: '13px',
+                marginTop: '8px',
+                background: '#f9f9f9'
+            },
+            placeholder: 'Nebo vložte URL mapy ručně...',
+            id: 'unified-map-input',
+            oninput: function(){
+                if(this.value.trim()){
+                    selectedMapUrl = this.value.trim();
+                    mapSelectButton.textContent = this.value.trim();
+                }
+            }
+        });
+        
+        mapDropdownWrapper.appendChild(mapSelectButton);
+        mapDropdownWrapper.appendChild(mapInput);
+        card.appendChild(mapLabel);
+        card.appendChild(mapDropdownWrapper);
+        
+        // Mode selection
+        const modeLabel = el('label', { 
+            style: { 
+                display: 'block', 
+                marginBottom: '8px', 
+                fontWeight: '600', 
+                color: '#333',
+                fontSize: '14px'
+            } 
+        }, ['🎮 Mód']);
+        const modeSelect = el('select', {
+            style: {
+                width: '100%',
+                padding: '12px',
+                borderRadius: '10px',
+                border: '2px solid #e0e0e0',
+                fontSize: '14px',
+                marginBottom: '16px',
+                background: 'white',
+                cursor: 'pointer'
+            },
+            id: 'unified-mode-select'
+        });
+        modeSelect.appendChild(el('option', { value: 'MOVING' }, ['Moving / 25K']));
+        modeSelect.appendChild(el('option', { value: 'NM' }, ['No Move']));
+        modeSelect.appendChild(el('option', { value: 'NMPZ' }, ['NMPZ']));
+        card.appendChild(modeLabel);
+        card.appendChild(modeSelect);
+        
+        // User selection
+        let selectedUserUrl = initialRecord?.playerUrl || null;
+        const userLabel = el('label', { 
+            style: { 
+                display: 'block', 
+                marginBottom: '8px', 
+                fontWeight: '600', 
+                color: '#333',
+                fontSize: '14px'
+            } 
+        }, ['👤 Hráč']);
+        const userDropdownWrapper = el('div', { style: { marginBottom: '16px' } });
+        const userSelectButton = el('button', {
+            style: {
+                width: '100%',
+                padding: '12px',
+                borderRadius: '10px',
+                border: '2px solid #e0e0e0',
+                fontSize: '14px',
+                background: 'white',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                textAlign: 'left'
+            },
+            id: 'unified-user-select',
+            onclick: async function(){
+                // Ensure users and profiles are loaded
+                if(!usersList || usersList.length === 0){
+                    await loadUsers();
+                }
+                // Load profiles from enriched data if not already loaded
+                await loadUserProfilesFromEnriched();
+                
+                // Toggle user dropdown
+                const existingDropdown = document.getElementById('unified-user-dropdown');
+                if(existingDropdown){
+                    existingDropdown.remove();
+                    return;
+                }
+                
+                // Create enhanced dropdown with images and info
+                const userDropdown = el('div', {
+                    id: 'unified-user-dropdown',
+                    style: {
+                        position: 'absolute',
+                        top: '100%',
+                        left: '0',
+                        right: '0',
+                        background: 'white',
+                        border: '2px solid #e0e0e0',
+                        borderRadius: '10px',
+                        marginTop: '4px',
+                        maxHeight: '400px',
+                        overflowY: 'auto',
+                        zIndex: '100002',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                    }
+                });
+                
+                const searchInput = el('input', {
+                    type: 'text',
+                    placeholder: '🔍 Hledat hráče...',
+                    style: {
+                        width: '100%',
+                        padding: '12px',
+                        border: 'none',
+                        borderBottom: '1px solid #e0e0e0',
+                        fontSize: '14px',
+                        outline: 'none',
+                        position: 'sticky',
+                        top: '0',
+                        background: 'white',
+                        zIndex: '1'
+                    }
+                });
+                userDropdown.appendChild(searchInput);
+                
+                const userList = el('div', {
+                    style: {
+                        maxHeight: '350px',
+                        overflowY: 'auto'
+                    }
+                });
+                
+                let filteredUsers = usersList || [];
+                
+                async function renderUsers(){
+                    userList.innerHTML = '';
+                    
+                    if(filteredUsers.length === 0){
+                        const noResults = el('div', {
+                            style: {
+                                padding: '20px',
+                                textAlign: 'center',
+                                color: '#666',
+                                fontSize: '14px'
+                            }
+                        }, ['Žádní hráči nenalezeni']);
+                        userList.appendChild(noResults);
+                        return;
+                    }
+                    
+                    // Ensure profiles are loaded from enriched data
+                    await loadUserProfilesFromEnriched();
+                    
+                    // Load user profiles for enriched data
+                    for(const user of filteredUsers){
+                        const userItem = el('div', {
+                            style: {
+                                padding: '12px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                borderBottom: '1px solid #f0f0f0',
+                                transition: 'background 0.2s ease'
+                            },
+                            onmouseenter: function(){ 
+                                this.style.background = '#f5f5f5'; 
+                            },
+                            onmouseleave: function(){ 
+                                this.style.background = 'white'; 
+                            },
+                            onclick: () => {
+                                selectedUserUrl = user.url;
+                                userSelectButton.innerHTML = '';
+                                
+                                // Get enriched profile if available
+                                const profile = getCachedUserProfile(user.url);
+                                // Prefer avatarImage, then pinImage, then avatarUrl from profile, then user.avatarUrl
+                                const avatarUrl = profile?.avatarImage || profile?.pinImage || profile?.avatarUrl || user.avatarUrl;
+                                
+                                if(avatarUrl){
+                                    const img = el('img', { 
+                                        src: avatarUrl, 
+                                        style: { width: '28px', height: '28px', borderRadius: '4px', objectFit: 'cover' },
+                                        alt: '',
+                                        onerror: function(){ 
+                                            this.style.display = 'none';
+                                            // Add placeholder if image fails
+                                            const placeholder = document.createElement('div');
+                                            placeholder.style.cssText = 'width: 28px; height: 28px; border-radius: 4px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; font-size: 16px;';
+                                            placeholder.textContent = '👤';
+                                            userSelectButton.insertBefore(placeholder, userSelectButton.firstChild);
+                                        }
+                                    });
+                                    userSelectButton.appendChild(img);
+                                } else {
+                                    // Add placeholder if no avatar
+                                    const placeholder = el('div', {
+                                        style: {
+                                            width: '28px',
+                                            height: '28px',
+                                            borderRadius: '4px',
+                                            background: '#f0f0f0',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '16px',
+                                            flexShrink: '0'
+                                        }
+                                    }, ['👤']);
+                                    userSelectButton.appendChild(placeholder);
+                                }
+                                
+                                const name = profile?.nick || profile?.name || user.name || user.url;
+                                userSelectButton.appendChild(el('span', {}, [name]));
+                                userDropdown.remove();
+                                checkExistingRecord();
+                            }
+                        });
+                        
+                        // Try to get enriched profile (from enrichedLeaderboards.json)
+                        const profile = getCachedUserProfile(user.url);
+                        // Prefer avatarImage, then pinImage, then avatarUrl from profile, then user.avatarUrl
+                        const avatarUrl = profile?.avatarImage || profile?.pinImage || profile?.avatarUrl || user.avatarUrl;
+                        const displayName = profile?.nick || profile?.name || user.name || user.url;
+                        const level = profile?.level;
+                        const countryCode = profile?.countryCode;
+                        
+                        // Avatar
+                        const avatarContainer = el('div', {
+                            style: {
+                                width: '48px',
+                                height: '48px',
+                                borderRadius: '6px',
+                                overflow: 'hidden',
+                                flexShrink: '0',
+                                background: '#f0f0f0',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }
+                        });
+                        
+                        if(avatarUrl){
+                            const avatarImg = el('img', {
+                                src: avatarUrl,
+                                style: { width: '100%', height: '100%', objectFit: 'cover' },
+                                alt: '',
+                                onerror: function(){ 
+                                    this.style.display = 'none';
+                                    avatarContainer.innerHTML = '👤';
+                                    avatarContainer.style.fontSize = '24px';
+                                }
+                            });
+                            avatarContainer.appendChild(avatarImg);
+                        } else {
+                            avatarContainer.innerHTML = '👤';
+                            avatarContainer.style.fontSize = '24px';
+                        }
+                        userItem.appendChild(avatarContainer);
+                        
+                        // User info
+                        const infoContainer = el('div', {
+                            style: {
+                                flex: '1',
+                                minWidth: '0'
+                            }
+                        });
+                        
+                        const nameRow = el('div', {
+                            style: {
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                marginBottom: '4px'
+                            }
+                        });
+                        
+                        const nameEl = el('span', {
+                            style: {
+                                fontWeight: '600',
+                                fontSize: '14px',
+                                color: '#333',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                            }
+                        }, [displayName]);
+                        nameRow.appendChild(nameEl);
+                        
+                        if(countryCode){
+                            nameRow.appendChild(el('span', {
+                                style: { fontSize: '12px' }
+                            }, [`🇺🇳 ${countryCode}`]));
+                        }
+                        
+                        if(level){
+                            nameRow.appendChild(el('span', {
+                                style: {
+                                    fontSize: '11px',
+                                    background: '#e3f2fd',
+                                    color: '#1565c0',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    fontWeight: '500'
+                                }
+                            }, [`Lv.${level}`]));
+                        }
+                        
+                        infoContainer.appendChild(nameRow);
+                        
+                        // URL (truncated)
+                        const urlEl = el('div', {
+                            style: {
+                                fontSize: '12px',
+                                color: '#666',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                            }
+                        }, [user.url]);
+                        infoContainer.appendChild(urlEl);
+                        
+                        userItem.appendChild(infoContainer);
+                        userList.appendChild(userItem);
+                    }
+                }
+                
+                searchInput.addEventListener('input', (e) => {
+                    const query = e.target.value.toLowerCase();
+                    filteredUsers = usersList.filter(u => {
+                        const profile = getCachedUserProfile(u.url);
+                        const name = profile?.nick || u.name || u.url;
+                        return name.toLowerCase().includes(query) || 
+                               (u.url || '').toLowerCase().includes(query);
+                    });
+                    renderUsers();
+                });
+                
+                userDropdown.appendChild(userList);
+                userDropdownWrapper.style.position = 'relative';
+                userDropdownWrapper.appendChild(userDropdown);
+                await renderUsers();
+                searchInput.focus();
+            }
+        }, ['Vyberte hráče...']);
+        userDropdownWrapper.appendChild(userSelectButton);
+        card.appendChild(userLabel);
+        card.appendChild(userDropdownWrapper);
+        
+        // Result inputs
+        const resultLabelInput = el('input', {
+            type: 'text',
+            style: {
+                width: '100%',
+                padding: '12px',
+                borderRadius: '10px',
+                border: '2px solid #e0e0e0',
+                fontSize: '14px',
+                marginBottom: '16px'
+            },
+            placeholder: 'Výsledek (čas nebo skóre)',
+            id: 'unified-result-label'
+        });
+        const resultUrlInput = el('input', {
+            type: 'text',
+            style: {
+                width: '100%',
+                padding: '12px',
+                borderRadius: '10px',
+                border: '2px solid #e0e0e0',
+                fontSize: '14px',
+                marginBottom: '16px'
+            },
+            placeholder: 'URL výsledku',
+            id: 'unified-result-url'
+        });
+        card.appendChild(el('label', { style: { display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333', fontSize: '14px' } }, ['📊 Výsledek']));
+        card.appendChild(resultLabelInput);
+        card.appendChild(resultUrlInput);
+        
+        // Pre-fill if editing existing record
+        if(initialRecord){
+            mainInput.value = initialRecord.resultUrl || '';
+            groupSelect.value = initialRecord.groupId || 'score-time';
+            if(initialRecord.mapUrl){
+                selectedMapUrl = initialRecord.mapUrl;
+                mapInput.value = initialRecord.mapUrl;
+                // Load maps and find matching map for button
+                (async () => {
+                    await loadMaps();
+                    const foundMap = mapsList.find(m => m.url === initialRecord.mapUrl);
+                    if(foundMap){
+                        mapSelectButton.innerHTML = '';
+                        const mapImage = foundMap.heroImage || foundMap.coverAvatar;
+                        if(mapImage){
+                            mapSelectButton.appendChild(el('img', { 
+                                src: mapImage, 
+                                style: { width: '28px', height: '28px', borderRadius: '4px', objectFit: 'cover' },
+                                alt: ''
+                            }));
+                        }
+                        mapSelectButton.appendChild(el('span', {}, [foundMap.name || initialRecord.mapUrl]));
+                    } else {
+                        mapSelectButton.textContent = initialRecord.mapUrl;
+                    }
+                })();
+            }
+            modeSelect.value = initialRecord.variant || 'MOVING';
+            resultLabelInput.value = initialRecord.resultLabel || '';
+            resultUrlInput.value = initialRecord.resultUrl || '';
+            if(initialRecord.player){
+                userSelectButton.textContent = initialRecord.player;
+            }
+        }
+        
+        // Auto-process function
+        async function autoProcessUnifiedInput(){
+            const inputText = mainInput.value.trim();
+            if(!inputText || !inputText.includes('geoguessr.com')) return;
+            
+            try{
+                statusDiv.style.display = 'block';
+                statusDiv.style.background = '#e3f2fd';
+                statusDiv.style.color = '#1565c0';
+                statusDiv.textContent = '🔄 Automatické zpracování...';
+                
+                const data = await parseAndFetchGameData(inputText);
+                
+                if(data.error){
+                    statusDiv.style.background = '#fff3cd';
+                    statusDiv.style.color = '#856404';
+                    statusDiv.textContent = '⚠️ ' + data.error;
+                    return;
+                }
+                
+                // Auto-fill fields
+                if(data.resultLabel) resultLabelInput.value = data.resultLabel;
+                if(data.resultUrl) resultUrlInput.value = data.resultUrl;
+                if(data.mapUrl) {
+                    selectedMapUrl = data.mapUrl;
+                    mapInput.value = data.mapUrl;
+                    // Try to find map in list and update button
+                    if(mapsList && mapsList.length > 0){
+                        const foundMap = mapsList.find(m => m.url === data.mapUrl);
+                        if(foundMap){
+                            mapSelectButton.innerHTML = '';
+                            const mapImage = foundMap.heroImage || foundMap.coverAvatar;
+                            if(mapImage){
+                                mapSelectButton.appendChild(el('img', { 
+                                    src: mapImage, 
+                                    style: { width: '28px', height: '28px', borderRadius: '4px', objectFit: 'cover' },
+                                    alt: ''
+                                }));
+                            }
+                            mapSelectButton.appendChild(el('span', {}, [foundMap.name || data.mapUrl]));
+                        } else {
+                            mapSelectButton.textContent = data.mapUrl;
+                        }
+                    } else {
+                        mapSelectButton.textContent = data.mapUrl;
+                    }
+                }
+                if(data.mode) modeSelect.value = data.mode;
+                
+                // Auto-select user
+                if(data.playerUrl){
+                    // Ensure users and profiles are loaded
+                    if(!usersList || usersList.length === 0){
+                        await loadUsers();
+                    }
+                    await loadUserProfilesFromEnriched(); // Load profiles from enriched data
+                    
+                    const matchedUser = usersList.find(u => u.url === data.playerUrl);
+                    if(matchedUser){
+                        selectedUserUrl = matchedUser.url;
+                        const profile = getCachedUserProfile(matchedUser.url);
+                        const avatarUrl = profile?.avatarImage || profile?.pinImage || profile?.avatarUrl || matchedUser.avatarUrl;
+                        const name = profile?.nick || profile?.name || matchedUser.name || matchedUser.url;
+                        
+                        userSelectButton.innerHTML = '';
+                        if(avatarUrl){
+                            userSelectButton.appendChild(el('img', { 
+                                src: avatarUrl, 
+                                style: { width: '28px', height: '28px', borderRadius: '4px', objectFit: 'cover' },
+                                alt: '',
+                                onerror: function(){ 
+                                    this.style.display = 'none';
+                                    const placeholder = document.createElement('div');
+                                    placeholder.style.cssText = 'width: 28px; height: 28px; border-radius: 4px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; font-size: 16px;';
+                                    placeholder.textContent = '👤';
+                                    userSelectButton.insertBefore(placeholder, userSelectButton.firstChild);
+                                }
+                            }));
+                        } else {
+                            const placeholder = el('div', {
+                                style: {
+                                    width: '28px',
+                                    height: '28px',
+                                    borderRadius: '4px',
+                                    background: '#f0f0f0',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '16px',
+                                    flexShrink: '0'
+                                }
+                            }, ['👤']);
+                            userSelectButton.appendChild(placeholder);
+                        }
+                        userSelectButton.appendChild(el('span', {}, [name]));
+                    }
+                }
+                
+                // Check if record already exists
+                if(selectedUserUrl && resultUrlInput.value.trim()){
+                    await checkExistingRecord();
+                }
+                
+                statusDiv.style.display = 'none';
+            }catch(e){
+                statusDiv.style.background = '#f8d7da';
+                statusDiv.style.color = '#721c24';
+                statusDiv.textContent = '❌ Chyba: ' + (e.message || 'Selhalo zpracování');
+            }
+        }
+        
+        // Check if record already exists
+        async function checkExistingRecord(){
+            if(!selectedUserUrl || !resultUrlInput.value.trim()) return;
+            
+            try{
+                const cacheBuster = Date.now();
+                const data = await fetch(`data/enrichedLeaderboards.json?cb=${cacheBuster}&_=${Date.now()}`).then(r => r.json()).catch(() => 
+                    fetch(`data/leaderboards.json?cb=${cacheBuster}&_=${Date.now()}`).then(r => r.json())
+                );
+                
+                const groups = data.groups || [];
+                let foundRecord = null;
+                
+                for(const group of groups){
+                    for(const card of group.cards || []){
+                        const entry = findExistingEntry(card, selectedUserUrl, resultUrlInput.value.trim());
+                        if(entry){
+                            foundRecord = {
+                                ...entry,
+                                groupId: group.id,
+                                mapUrl: card.mapUrl,
+                                variant: detectVariant(card)
+                            };
+                            break;
+                        }
+                    }
+                    if(foundRecord) break;
+                }
+                
+                if(foundRecord){
+                    detectionInfo.style.display = 'block';
+                    detectionInfo.innerHTML = `✅ <strong>Nalezen existující záznam:</strong> ${foundRecord.player} - ${foundRecord.resultLabel} (${foundRecord.rank})<br>Záznam bude aktualizován na správné místo podle nového výsledku.`;
+                    detectionInfo.style.background = '#d4edda';
+                    detectionInfo.style.color = '#155724';
+                    detectionInfo.style.borderColor = 'rgba(21,87,36,0.2)';
+                } else {
+                    detectionInfo.style.display = 'block';
+                    detectionInfo.innerHTML = `➕ <strong>Nový záznam</strong><br>Bude přidán na správné místo podle výsledku.`;
+                    detectionInfo.style.background = '#e3f2fd';
+                    detectionInfo.style.color = '#1565c0';
+                    detectionInfo.style.borderColor = 'rgba(21,101,192,0.2)';
+                }
+            }catch(e){
+                console.warn('Failed to check existing record:', e);
+            }
+        }
+        
+        // Save function
+        async function saveUnifiedRecord(){
+            const groupId = groupSelect.value;
+            const mapUrl = mapInput.value.trim() || null;
+            const mode = modeSelect.value || null;
+            const userUrl = selectedUserUrl;
+            
+            if(!userUrl){
+                statusDiv.style.display = 'block';
+                statusDiv.style.background = '#f8d7da';
+                statusDiv.style.color = '#721c24';
+                statusDiv.textContent = '❌ Prosím vyberte hráče';
+                return;
+            }
+            
+            if(!resultUrlInput.value.trim() && !resultLabelInput.value.trim()){
+                statusDiv.style.display = 'block';
+                statusDiv.style.background = '#f8d7da';
+                statusDiv.style.color = '#721c24';
+                statusDiv.textContent = '❌ Prosím vložte odkaz na hru nebo výsledek';
+                return;
+            }
+            
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = '#e3f2fd';
+            statusDiv.style.color = '#1565c0';
+            statusDiv.textContent = '💾 Ukládám...';
+            
+            try{
+                const ref = {
+                    groupId: groupId,
+                    cardIndex: null,
+                    entryIndex: null, // Will be auto-detected
+                    mapUrl: selectedMapUrl || mapInput.value.trim() || null,
+                    variant: mode
+                };
+                
+                const payload = {
+                    player: usersList.find(u => u.url === userUrl)?.name || '',
+                    playerUrl: userUrl,
+                    resultLabel: resultLabelInput.value.trim(),
+                    resultUrl: resultUrlInput.value.trim()
+                };
+                
+                await saveEdit(ref, payload);
+                
+                statusDiv.style.background = '#d4edda';
+                statusDiv.style.color = '#155724';
+                statusDiv.textContent = '✅ Záznam úspěšně uložen! Obnovuji data...';
+                
+                removeRoot();
+                try {
+                    localStorage.removeItem('gg_enriched_cache_v1');
+                    localStorage.removeItem('gg_enriched_cache_time_v1');
+                } catch(_) {}
+                window.dispatchEvent(new Event('gg-refresh-data'));
+                showSuccessNotification('✅ Záznam uložen! Data se obnovují...');
+            }catch(err){
+                statusDiv.style.background = '#f8d7da';
+                statusDiv.style.color = '#721c24';
+                statusDiv.textContent = '❌ Chyba: ' + (err.message || 'Selhalo ukládání');
+                console.error('Save error:', err);
+            }
+        }
+        
+        // Save button
+        const saveBtn = el('button', {
+            style: {
+                width: '100%',
+                padding: '14px',
+                fontSize: '16px',
+                fontWeight: '600',
+                background: 'linear-gradient(135deg, #0b3d91 0%, #1e5bb8 100%)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '10px',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                marginTop: '8px'
+            },
+            onclick: saveUnifiedRecord
+        }, ['💾 Uložit záznam']);
+        card.appendChild(saveBtn);
+        
+        root.appendChild(card);
+        
+        // Load users, maps, and user profiles from enriched data
+        (async () => {
+            try {
+                await Promise.all([
+                    loadUsers(), 
+                    loadMaps(),
+                    loadUserProfilesFromEnriched() // Load profiles from enrichedLeaderboards.json
+                ]);
+                
+                if(initialRecord?.playerUrl){
+                    const user = usersList.find(u => u.url === initialRecord.playerUrl);
+                    if(user){
+                        selectedUserUrl = user.url;
+                        const profile = getCachedUserProfile(user.url);
+                        const avatarUrl = profile?.avatarImage || profile?.pinImage || user.avatarUrl;
+                        const name = profile?.nick || profile?.name || user.name || user.url;
+                        
+                        userSelectButton.innerHTML = '';
+                        if(avatarUrl){
+                            userSelectButton.appendChild(el('img', { 
+                                src: avatarUrl, 
+                                style: { width: '28px', height: '28px', borderRadius: '4px', objectFit: 'cover' },
+                                alt: '',
+                                onerror: function(){ this.style.display = 'none'; }
+                            }));
+                        }
+                        userSelectButton.appendChild(el('span', {}, [name]));
+                    }
+                }
+            } catch(e) {
+                console.warn('Failed to load users/maps/profiles:', e);
+            }
+        })();
+        
+        // Check existing record when inputs change (debounced)
+        let checkTimeout = null;
+        resultUrlInput.addEventListener('input', () => {
+            clearTimeout(checkTimeout);
+            checkTimeout = setTimeout(() => {
+                if(selectedUserUrl && resultUrlInput.value.trim()){
+                    checkExistingRecord();
+                }
+            }, 500);
+        });
     }
 
     function openAddRecordEditor(){
@@ -1107,16 +2277,30 @@
                     rank: rankInput.value.trim() || null // Will be auto-assigned if null
                 };
                 
+                // Validate inputs before saving
+                if(!payload.playerUrl) {
+                    throw new Error('Chybí URL hráče');
+                }
+                if(!payload.resultUrl && !payload.resultLabel) {
+                    throw new Error('Chybí výsledek nebo odkaz na hru');
+                }
+                
                 await saveEdit(ref, payload);
                 
                 statusDiv.style.background = '#d4edda';
                 statusDiv.style.color = '#155724';
-                statusDiv.textContent = '✅ Záznam úspěšně přidán!';
+                statusDiv.textContent = '✅ Záznam úspěšně přidán! Obnovuji data...';
                 
-                setTimeout(() => {
+                // Refresh data without full page reload for faster UX
                     removeRoot();
-                    window.location.reload();
-                }, 1500);
+                // Clear cache to force fresh data
+                try {
+                    localStorage.removeItem('gg_enriched_cache_v1');
+                    localStorage.removeItem('gg_enriched_cache_time_v1');
+                } catch(_) {}
+                // Trigger data refresh
+                window.dispatchEvent(new Event('gg-refresh-data'));
+                showSuccessNotification('✅ Záznam přidán! Data se obnovují...');
             }catch(err){
                 statusDiv.style.background = '#f8d7da';
                 statusDiv.style.color = '#721c24';
@@ -1134,6 +2318,315 @@
                 console.warn('Failed to load users:', e);
             }
         })();
+    }
+
+    async function openEditRecordSelector(){
+        const root = getRoot();
+        root.innerHTML = '';
+        root.style.zIndex = '100001';
+        root.style.background = 'rgba(0,0,0,0.95)';
+        
+        const card = el('div', { 
+            style: { 
+                maxWidth: '800px', 
+                maxHeight: '90vh',
+                margin: '40px auto', 
+                background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)', 
+                borderRadius: '20px', 
+                padding: '32px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+                fontFamily: 'Quicksand, sans-serif',
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column'
+            } 
+        });
+        
+        const header = el('div', { style: { marginBottom: '24px', textAlign: 'center' } });
+        const title = el('h2', { 
+            style: { 
+                fontSize: '28px', 
+                fontWeight: '700', 
+                color: '#0b3d91', 
+                margin: '0 0 8px 0',
+                fontFamily: 'Quicksand, sans-serif'
+            } 
+        }, ['✏️ Vyberte záznam k úpravě']);
+        header.appendChild(title);
+        
+        const closeBtn = el('button', {
+            onclick: () => { removeRoot(); },
+            style: {
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                border: 'none',
+                background: 'rgba(0,0,0,0.1)',
+                color: '#666',
+                cursor: 'pointer',
+                fontSize: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s ease',
+                fontFamily: 'Quicksand, sans-serif'
+            },
+            onmouseenter: function(){
+                this.style.background = 'rgba(0,0,0,0.15)';
+                this.style.transform = 'rotate(90deg)';
+            },
+            onmouseleave: function(){
+                this.style.background = 'rgba(0,0,0,0.1)';
+                this.style.transform = 'rotate(0deg)';
+            }
+        }, ['×']);
+        card.appendChild(closeBtn);
+        card.appendChild(header);
+        
+        const statusDiv = el('div', { 
+            style: { 
+                marginBottom: '16px', 
+                padding: '12px 16px', 
+                borderRadius: '10px', 
+                fontSize: '14px', 
+                display: 'none', 
+                transition: 'all 0.3s ease', 
+                fontWeight: '500', 
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)' 
+            } 
+        });
+        card.appendChild(statusDiv);
+        
+        // Search input
+        const searchInput = el('input', {
+            type: 'text',
+            placeholder: '🔍 Hledat podle hráče, mapy nebo výsledku...',
+            style: {
+                width: '100%',
+                padding: '12px 16px',
+                fontSize: '14px',
+                border: '2px solid #e0e0e0',
+                borderRadius: '10px',
+                marginBottom: '16px',
+                fontFamily: 'Quicksand, sans-serif',
+                transition: 'border-color 0.2s ease'
+            },
+            onfocus: function(){ this.style.borderColor = '#0b3d91'; },
+            onblur: function(){ this.style.borderColor = '#e0e0e0'; }
+        });
+        card.appendChild(searchInput);
+        
+        // Records list container
+        const recordsList = el('div', {
+            style: {
+                flex: '1',
+                overflowY: 'auto',
+                maxHeight: '60vh',
+                paddingRight: '8px'
+            }
+        });
+        card.appendChild(recordsList);
+        
+        // Loading state
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = '#e3f2fd';
+        statusDiv.style.color = '#1565c0';
+        statusDiv.textContent = '🔄 Načítání záznamů...';
+        
+        root.appendChild(card);
+        
+        try {
+            // Load leaderboard data
+            const cacheBuster = Date.now();
+            const randomId = Math.random().toString(36).substring(7);
+            let data;
+            try {
+                data = await fetch(`data/enrichedLeaderboards.json?cb=${cacheBuster}&t=${cacheBuster}&r=${randomId}&_=${Date.now()}`).then(r => r.json());
+            } catch(_) {
+                data = await fetch(`data/leaderboards.json?cb=${cacheBuster}&t=${cacheBuster}&r=${randomId}&_=${Date.now()}`).then(r => r.json());
+            }
+            
+            const groups = data.groups || [];
+            const allRecords = [];
+            
+            // Collect all records with their context
+            groups.forEach(group => {
+                group.cards?.forEach((card, cardIndex) => {
+                    card.entries?.forEach((entry, entryIndex) => {
+                        if(entry.player && entry.player !== '-') {
+                            allRecords.push({
+                                groupId: group.id,
+                                cardIndex: cardIndex,
+                                entryIndex: entryIndex,
+                                player: entry.player,
+                                playerUrl: entry.playerUrl,
+                                resultLabel: entry.resultLabel || '',
+                                resultUrl: entry.resultUrl || '',
+                                rank: entry.rank || '',
+                                mapUrl: card.mapUrl || '',
+                                cardTitle: card.title || '',
+                                variant: card.title?.toLowerCase().includes('nmpz') ? 'NMPZ' : 
+                                         card.title?.toLowerCase().includes('nm') ? 'NM' : 
+                                         card.title?.toLowerCase().includes('moving') || card.title?.toLowerCase().includes('25k') ? 'MOVING' : 'OTHER'
+                            });
+                        }
+                    });
+                });
+            });
+            
+            if(allRecords.length === 0) {
+                statusDiv.style.background = '#fff3cd';
+                statusDiv.style.color = '#856404';
+                statusDiv.textContent = '⚠️ Nebyly nalezeny žádné záznamy';
+                return;
+            }
+            
+            statusDiv.style.display = 'none';
+            
+            // Render records
+            function renderRecords(filteredRecords) {
+                recordsList.innerHTML = '';
+                
+                if(filteredRecords.length === 0) {
+                    const noResults = el('div', {
+                        style: {
+                            textAlign: 'center',
+                            padding: '40px',
+                            color: '#666',
+                            fontSize: '16px'
+                        }
+                    }, ['Žádné záznamy neodpovídají vyhledávání']);
+                    recordsList.appendChild(noResults);
+                    return;
+                }
+                
+                filteredRecords.forEach(record => {
+                    const recordItem = el('div', {
+                        style: {
+                            padding: '16px',
+                            marginBottom: '8px',
+                            background: '#fff',
+                            borderRadius: '10px',
+                            border: '2px solid #e0e0e0',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px'
+                        },
+                        onmouseenter: function(){
+                            this.style.borderColor = '#0b3d91';
+                            this.style.transform = 'translateX(4px)';
+                            this.style.boxShadow = '0 4px 12px rgba(11,61,145,0.15)';
+                        },
+                        onmouseleave: function(){
+                            this.style.borderColor = '#e0e0e0';
+                            this.style.transform = 'translateX(0)';
+                            this.style.boxShadow = 'none';
+                        },
+                        onclick: () => {
+                            removeRoot();
+                            openUnifiedRecordEditor({
+                                groupId: record.groupId,
+                                cardIndex: record.cardIndex,
+                                entryIndex: record.entryIndex,
+                                mapUrl: record.mapUrl,
+                                variant: record.variant,
+                                cardTitle: record.cardTitle,
+                                player: record.player,
+                                playerUrl: record.playerUrl,
+                                resultLabel: record.resultLabel,
+                                resultUrl: record.resultUrl,
+                                rank: record.rank
+                            });
+                        }
+                    });
+                    
+                    const rankEl = el('div', {
+                        style: {
+                            fontSize: '18px',
+                            fontWeight: '700',
+                            color: '#0b3d91',
+                            minWidth: '40px',
+                            textAlign: 'center'
+                        }
+                    }, [record.rank || '-']);
+                    
+                    const infoEl = el('div', {
+                        style: {
+                            flex: '1',
+                            minWidth: '0'
+                        }
+                    });
+                    
+                    const playerEl = el('div', {
+                        style: {
+                            fontSize: '16px',
+                            fontWeight: '600',
+                            color: '#333',
+                            marginBottom: '4px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                        }
+                    }, [record.player]);
+                    
+                    const detailsEl = el('div', {
+                        style: {
+                            fontSize: '13px',
+                            color: '#666',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                        }
+                    }, [`${record.cardTitle} · ${record.resultLabel || 'Bez výsledku'}`]);
+                    
+                    infoEl.appendChild(playerEl);
+                    infoEl.appendChild(detailsEl);
+                    
+                    recordItem.appendChild(rankEl);
+                    recordItem.appendChild(infoEl);
+                    recordsList.appendChild(recordItem);
+                });
+            }
+            
+            // Initial render
+            renderRecords(allRecords);
+            
+            // Search functionality
+            let searchTimeout = null;
+            searchInput.addEventListener('input', (e) => {
+                clearTimeout(searchTimeout);
+                const query = e.target.value.toLowerCase().trim();
+                
+                searchTimeout = setTimeout(() => {
+                    if(!query) {
+                        renderRecords(allRecords);
+                        return;
+                    }
+                    
+                    const filtered = allRecords.filter(record => {
+                        return (
+                            record.player?.toLowerCase().includes(query) ||
+                            record.cardTitle?.toLowerCase().includes(query) ||
+                            record.resultLabel?.toLowerCase().includes(query) ||
+                            record.rank?.toLowerCase().includes(query)
+                        );
+                    });
+                    
+                    renderRecords(filtered);
+                }, 200);
+            });
+            
+        } catch(error) {
+            console.error('Failed to load records:', error);
+            statusDiv.style.background = '#f8d7da';
+            statusDiv.style.color = '#721c24';
+            statusDiv.textContent = '❌ Chyba při načítání záznamů: ' + (error.message || 'Neznámá chyba');
+        }
     }
 
     function uiApp(){
@@ -1339,7 +2832,7 @@
         infoText.innerHTML = `
             <div style="font-weight: 600; color: #0b3d91; margin-bottom: 8px;">💡 Jak používat editor:</div>
             <div style="font-size: 13px;">
-                • <strong>Pravým kliknutím</strong> na libovolný rekord můžete ho upravit nebo přidat nový<br>
+                • <strong>Použijte tlačítka v admin panelu</strong> (vpravo nahoře) pro přidání nebo úpravu záznamů<br>
                 • <strong>Vložte URL hry</strong> - automaticky se zpracuje a vyplní všechna pole<br>
                 • <strong>Uživatel se automaticky najde</strong> nebo přidá z URL<br>
                 • <strong>Klikněte "Uložit"</strong> pro finální uložení
@@ -1514,71 +3007,8 @@
         root.appendChild(card);
     }
 
-    // Context menu edit (right-click)
-    let contextMenuBound = false;
-    function bindContextMenu(){
-        if(contextMenuBound) return; // Prevent duplicate listeners
-        contextMenuBound = true;
-        
-        document.addEventListener('contextmenu', async (e)=>{
-            const isAdmin = isAdminAuthenticated();
-            if(!isAdmin) {
-                contextMenuBound = false; // Reset if admin session expired
-                return;
-            }
-            const entry = e.target.closest('.gg-entry');
-            const card = e.target.closest('.gg-card');
-            if(!entry && !card) return;
-            e.preventDefault();
-
-            const hostCard = card || entry.closest('.gg-card');
-            if(!hostCard) return;
-            const groupId = hostCard.dataset.groupId;
-            
-            // CRITICAL: Use originalCardIndex directly - it's the most reliable way
-            let cardIndex = null;
-            const mapUrl = entry?.dataset.mapUrl || hostCard.dataset.mapUrl || '';
-            const variant = entry?.dataset.variant || '';
-            const cardId = entry?.dataset.cardId || '';
-            const cardTitle = entry?.dataset.cardTitle || '';
-            
-            // PRIORITY 1: Use originalCardIndex from entry (set during rendering)
-            if(entry && entry.dataset.originalCardIndex) {
-                cardIndex = Number(entry.dataset.originalCardIndex);
-                console.log(`✅ Using originalCardIndex ${cardIndex} from entry dataset`);
-            } 
-            // PRIORITY 2: Fallback to cardIndex from hostCard
-            else if(hostCard.dataset.cardIndex) {
-                cardIndex = Number(hostCard.dataset.cardIndex);
-                console.log(`⚠️ Using cardIndex ${cardIndex} from hostCard (fallback)`);
-            }
-            
-            const entryIndex = entry ? Number(entry.dataset.entryIndex) : null;
-
-            console.log(`🔍 Opening editor with FULL context:`, {
-                groupId,
-                cardIndex,
-                entryIndex,
-                mapUrl: mapUrl || '(none)',
-                variant: variant || '(none)',
-                cardId: cardId || '(none)',
-                cardTitle: cardTitle || '(none)',
-                hasOriginalCardIndex: !!(entry?.dataset.originalCardIndex),
-                originalCardIndexValue: entry?.dataset.originalCardIndex || '(none)'
-            });
-            
-            // Pass ALL information for maximum reliability
-            openEditor({ 
-                groupId, 
-                cardIndex, 
-                entryIndex,
-                mapUrl: mapUrl || undefined,
-                variant: variant || undefined,
-                cardId: cardId || undefined,
-                cardTitle: cardTitle || undefined
-            });
-        });
-    }
+    // Context menu edit (right-click) - REMOVED
+    // Right-click editing has been removed. Use the admin sidebar buttons instead.
 
     function showSuccessNotification(message){
         const notification = document.createElement('div');
@@ -1637,14 +3067,20 @@
     // Users management
     let usersList = [];
     let usersLoadingPromise = null; // For loadUsers()
+    let mapsLoadingPromise = null; // For loadMaps()
     let enrichmentPromise = null; // For enrichUsersWithProfiles()
     let enrichmentProgress = { loaded: 0, total: 0, failed: [] };
+    
+    // Global lists
+    let mapsList = [];
     
     // Cache keys
     const CACHE_KEYS = {
         USERS: 'gg_admin_users_cache',
         USERS_TIMESTAMP: 'gg_admin_users_timestamp',
         USER_PROFILES: 'gg_admin_user_profiles_cache',
+        MAPS: 'gg_admin_maps_cache',
+        MAPS_TIMESTAMP: 'gg_admin_maps_timestamp',
         CACHE_DURATION: 5 * 60 * 1000 // 5 minutes
     };
     
@@ -1760,6 +3196,154 @@
         })();
         
         return usersLoadingPromise;
+    }
+    
+    // Load maps from cache or fetch
+    function getCachedMaps(){
+        try{
+            const cached = localStorage.getItem(CACHE_KEYS.MAPS);
+            const timestamp = localStorage.getItem(CACHE_KEYS.MAPS_TIMESTAMP);
+            if(cached && timestamp){
+                const age = Date.now() - parseInt(timestamp);
+                if(age < CACHE_KEYS.CACHE_DURATION){
+                    return JSON.parse(cached);
+                }
+            }
+        }catch(e){
+            console.warn('Failed to load cached maps:', e);
+        }
+        return null;
+    }
+    
+    function saveMapsToCache(maps){
+        try{
+            localStorage.setItem(CACHE_KEYS.MAPS, JSON.stringify(maps));
+            localStorage.setItem(CACHE_KEYS.MAPS_TIMESTAMP, String(Date.now()));
+        }catch(e){
+            console.warn('Failed to cache maps:', e);
+        }
+    }
+    
+    async function loadMaps(forceRefresh = false){
+        // Prevent multiple simultaneous loads
+        if(mapsLoadingPromise && !forceRefresh) return mapsLoadingPromise;
+        
+        // Try cache first
+        if(!forceRefresh){
+            const cached = getCachedMaps();
+            if(cached){
+                mapsList = cached;
+                console.log(`✅ Loaded ${mapsList.length} maps from cache`);
+                return Promise.resolve(mapsList);
+            }
+        }
+        
+        mapsLoadingPromise = (async () => {
+            try{
+                let res;
+                try{
+                    res = await fetch('data/maps.json?cb=' + Date.now(), {
+                        cache: 'no-store',
+                        headers: {
+                            'Cache-Control': 'no-cache'
+                        }
+                    });
+                }catch(e){
+                    res = await fetch('data/maps.json');
+                }
+                
+                if(!res.ok){
+                    throw new Error(`Failed to fetch maps.json: ${res.status} ${res.statusText}`);
+                }
+                const data = await res.json();
+                mapsList = Array.isArray(data.maps) ? data.maps : [];
+                
+                // Save to cache
+                saveMapsToCache(mapsList);
+                
+                mapsLoadingPromise = null;
+                console.log(`✅ Loaded ${mapsList.length} maps from server`);
+                return mapsList;
+            }catch(e){
+                console.warn('Failed to load maps.json:', e);
+                const cached = getCachedMaps();
+                if(cached){
+                    mapsList = cached;
+                    console.log(`⚠️ Using expired cache (${mapsList.length} maps)`);
+                    mapsLoadingPromise = null;
+                    return mapsList;
+                }
+                mapsList = [];
+                mapsLoadingPromise = null;
+                return [];
+            }
+        })();
+        
+        return mapsLoadingPromise;
+    }
+    
+    // Load user profiles from enrichedLeaderboards.json
+    async function loadUserProfilesFromEnriched(){
+        try{
+            const cacheBuster = Date.now();
+            let data;
+            try{
+                data = await fetch(`data/enrichedLeaderboards.json?cb=${cacheBuster}&_=${Date.now()}`).then(r => r.json());
+            }catch(_){
+                data = await fetch(`data/leaderboards.json?cb=${cacheBuster}&_=${Date.now()}`).then(r => r.json());
+            }
+            
+            if(!data || !data.groups) return;
+            
+            const profilesMap = new Map();
+            
+            // Extract all user profiles from entries
+            (data.groups || []).forEach(group => {
+                (group.cards || []).forEach(card => {
+                    (card.entries || []).forEach(entry => {
+                        if(entry.playerUrl && entry.playerInfo){
+                            const playerInfo = entry.playerInfo;
+                            // Only save if we have useful data
+                            if(playerInfo.nick || playerInfo.avatarImage || playerInfo.pinImage){
+                                // Transform to match cache format
+                                const profile = {
+                                    nick: playerInfo.nick || null,
+                                    name: playerInfo.nick || null, // Alias for compatibility
+                                    avatarUrl: playerInfo.avatarImage || playerInfo.pinImage || null,
+                                    avatarImage: playerInfo.avatarImage || null,
+                                    pinImage: playerInfo.pinImage || null,
+                                    countryCode: playerInfo.countryCode || null,
+                                    level: playerInfo.level || null,
+                                    xp: playerInfo.xp || null,
+                                    isVerified: playerInfo.isVerified || false,
+                                    isProUser: playerInfo.isProUser || false,
+                                    cachedAt: Date.now()
+                                };
+                                
+                                // Only update if we don't have this profile or if new one has more data
+                                const existing = profilesMap.get(entry.playerUrl);
+                                if(!existing || (profile.avatarImage && !existing.avatarImage) || (profile.nick && !existing.nick)){
+                                    profilesMap.set(entry.playerUrl, profile);
+                                }
+                            }
+                        }
+                    });
+                });
+            });
+            
+            // Save all profiles to cache
+            let savedCount = 0;
+            profilesMap.forEach((profile, url) => {
+                saveUserProfileToCache(url, profile);
+                savedCount++;
+            });
+            
+            console.log(`✅ Loaded ${savedCount} user profiles from enrichedLeaderboards.json`);
+            return savedCount;
+        }catch(e){
+            console.warn('Failed to load user profiles from enrichedLeaderboards.json:', e);
+            return 0;
+        }
     }
     
     // Multiple CORS proxy services for rotation to bypass rate limits
@@ -2495,19 +4079,19 @@
                 
                 statusDiv.style.background = '#d4edda';
                 statusDiv.style.color = '#155724';
-                statusDiv.textContent = '✅ Úspěšně uloženo!';
+                statusDiv.textContent = '✅ Úspěšně uloženo! Obnovuji data...';
                 
-                // Clear cache and force refresh
+                // Clear cache and force refresh without page reload
                 try {
                     localStorage.removeItem('gg_enriched_cache_v1');
                     localStorage.removeItem('gg_enriched_cache_time_v1');
                 } catch(_) {}
                 
-                setTimeout(() => {
+                // Close editor and refresh data immediately
                     removeRoot();
-                    // Force page reload to ensure fresh data is loaded
-                    window.location.reload();
-                }, 1500);
+                // Trigger data refresh event
+                window.dispatchEvent(new Event('gg-refresh-data'));
+                showSuccessNotification('✅ Záznam uložen! Data se obnovují...');
             }catch(err){
                 statusDiv.style.background = '#f8d7da';
                 statusDiv.style.color = '#721c24';
@@ -4578,6 +6162,123 @@
         };
     }
 
+    // Cache token verification result to avoid repeated checks
+    let tokenVerificationCache = {
+        token: null,
+        verified: false,
+        timestamp: 0
+    };
+    const TOKEN_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+    // Helper function to parse resultLabel to numeric value for comparison
+    function parseResultValue(resultLabel){
+        if(!resultLabel) return Infinity; // Empty values go to end
+        
+        // Try to parse as time (HH:MM:SS or MM:SS)
+        const timeMatch = resultLabel.match(/(\d{1,2}):(\d{2}):(\d{2})/);
+        if(timeMatch){
+            const hours = parseInt(timeMatch[1]) || 0;
+            const minutes = parseInt(timeMatch[2]) || 0;
+            const seconds = parseInt(timeMatch[3]) || 0;
+            return hours * 3600 + minutes * 60 + seconds; // Convert to seconds
+        }
+        
+        // Try to parse as MM:SS
+        const shortTimeMatch = resultLabel.match(/(\d{1,2}):(\d{2})/);
+        if(shortTimeMatch){
+            const minutes = parseInt(shortTimeMatch[1]) || 0;
+            const seconds = parseInt(shortTimeMatch[2]) || 0;
+            return minutes * 60 + seconds; // Convert to seconds
+        }
+        
+        // Try to parse as number (score)
+        const numberMatch = resultLabel.match(/(\d{1,6})/);
+        if(numberMatch){
+            return parseInt(numberMatch[1]);
+        }
+        
+        return Infinity; // Unknown format, put at end
+    }
+    
+    // Helper function to find existing entry for a player in a card
+    function findExistingEntry(card, playerUrl, resultUrl){
+        if(!card.entries || !Array.isArray(card.entries)) return null;
+        
+        // First try to find by resultUrl (most reliable)
+        if(resultUrl){
+            const byResultUrl = card.entries.find(e => e.resultUrl === resultUrl);
+            if(byResultUrl) return byResultUrl;
+        }
+        
+        // Then try to find by playerUrl
+        if(playerUrl){
+            const byPlayerUrl = card.entries.find(e => e.playerUrl === playerUrl);
+            if(byPlayerUrl) return byPlayerUrl;
+        }
+        
+        return null;
+    }
+    
+    // Helper function to detect if resultLabel is a score (higher is better) or time (lower is better)
+    function isScore(resultLabel){
+        if(!resultLabel) return false;
+        // If it's a pure number (no colons), it's likely a score
+        // Times have format like "00:03:07" or "03:07"
+        const hasColon = resultLabel.includes(':');
+        const isPureNumber = /^\d+$/.test(resultLabel.trim());
+        return !hasColon && isPureNumber;
+    }
+    
+    // Helper function to calculate correct rank and position for new/updated entry
+    function calculateRankAndPosition(card, newEntry, existingEntryIndex){
+        if(!card.entries || !Array.isArray(card.entries)) {
+            return { rank: '1.', insertIndex: 0 };
+        }
+        
+        const newValue = parseResultValue(newEntry.resultLabel);
+        const entries = [...card.entries];
+        
+        // Remove existing entry if updating
+        if(existingEntryIndex != null && existingEntryIndex >= 0 && existingEntryIndex < entries.length){
+            entries.splice(existingEntryIndex, 1);
+        }
+        
+        // Determine if this is a score-based leaderboard (higher is better) or time-based (lower is better)
+        // Check existing entries to determine the type
+        const isScoreBased = entries.length > 0 && isScore(entries[0].resultLabel);
+        // If no entries, check the new entry
+        const checkEntry = entries.length > 0 ? entries[0] : newEntry;
+        const scoreBased = isScore(checkEntry.resultLabel);
+        
+        // Find correct position by comparing values
+        let insertIndex = 0;
+        for(let i = 0; i < entries.length; i++){
+            const entryValue = parseResultValue(entries[i].resultLabel);
+            
+            if(scoreBased){
+                // Higher score is better (rank 1)
+                if(newValue > entryValue){
+                    // New entry is better, insert here
+                    insertIndex = i;
+                    break;
+                }
+            } else {
+                // Lower time is better (rank 1)
+                if(newValue < entryValue){
+                    // New entry is better, insert here
+                    insertIndex = i;
+                    break;
+                }
+            }
+            insertIndex = i + 1;
+        }
+        
+        // Calculate rank (1-based)
+        const rank = `${insertIndex + 1}.`;
+        
+        return { rank, insertIndex };
+    }
+
     async function saveEdit(ref, payload){
         // 1) Fetch current JSON
         const owner = 'filipjarolim';
@@ -4609,22 +6310,34 @@
             throw new Error('Token seems too short. GitHub tokens are usually 40+ characters for classic tokens, or start with ghp_/gho_/ghu_/ghs_/ghr_ for fine-grained tokens. Please check your token.');
         }
         
-        // Test token permissions before proceeding
+        // Test token permissions before proceeding (with caching)
         async function testTokenPermissions(){
+            // Check cache first
+            const now = Date.now();
+            if(tokenVerificationCache.token === token && 
+               tokenVerificationCache.verified && 
+               (now - tokenVerificationCache.timestamp) < TOKEN_CACHE_TTL) {
+                console.log('✅ Using cached token verification');
+                return true;
+            }
+
             try {
                 const testUrl = `https://api.github.com/repos/${owner}/${repo}`;
                 const testRes = await fetch(testUrl, { 
                     headers: { 
                         Authorization: `Bearer ${token}`,
                         Accept: 'application/vnd.github.v3+json'
-                    } 
+                    },
+                    cache: 'no-store' // Always check fresh for token verification
                 });
                 
                 if(testRes.status === 401) {
+                    tokenVerificationCache = { token: null, verified: false, timestamp: 0 };
                     throw new Error('Token is invalid or expired. Please generate a new token.');
                 }
                 
                 if(testRes.status === 403) {
+                    tokenVerificationCache = { token: null, verified: false, timestamp: 0 };
                     throw new Error('Token lacks required permissions. Token needs "repo" scope (includes contents:write). Go to https://github.com/settings/tokens to update permissions.');
                 }
                 
@@ -4635,14 +6348,23 @@
                 
                 const repoData = await testRes.json();
                 console.log('✅ Token verified, repository access confirmed:', repoData.full_name);
+                
+                // Cache successful verification
+                tokenVerificationCache = {
+                    token: token,
+                    verified: true,
+                    timestamp: now
+                };
+                
                 return true;
             } catch(e) {
                 console.error('Token verification failed:', e.message);
+                tokenVerificationCache = { token: null, verified: false, timestamp: 0 };
                 throw e;
             }
         }
 
-        async function ghGet(path, retries = 3){
+        async function ghGet(path, retries = 2){
             // URL encode the path properly
             const encodedPath = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
             const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${branch}`;
@@ -4651,8 +6373,8 @@
             for(let attempt = 0; attempt <= retries; attempt++){
                 try{
                     if(attempt > 0){
-                        // Exponential backoff for retries
-                        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+                        // Reduced exponential backoff for faster retries
+                        const delay = Math.min(500 * Math.pow(2, attempt - 1), 3000);
                         console.log(`Retrying GitHub GET (attempt ${attempt + 1}/${retries + 1}) after ${delay}ms...`);
                         await new Promise(resolve => setTimeout(resolve, delay));
                     }
@@ -4720,7 +6442,7 @@
             
             throw lastError || new Error('GitHub GET failed after retries');
         }
-        async function ghPut(path, content, sha, message, retries = 3){
+        async function ghPut(path, content, sha, message, retries = 2){
             // URL encode the path properly
             const encodedPath = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
             const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}`;
@@ -4740,8 +6462,8 @@
             for(let attempt = 0; attempt <= retries; attempt++){
                 try{
                     if(attempt > 0){
-                        // Exponential backoff for retries
-                        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+                        // Reduced exponential backoff for faster retries
+                        const delay = Math.min(500 * Math.pow(2, attempt - 1), 3000);
                         console.log(`Retrying GitHub PUT (attempt ${attempt + 1}/${retries + 1}) after ${delay}ms...`);
                         await new Promise(resolve => setTimeout(resolve, delay));
                         
@@ -5066,19 +6788,6 @@
             card.entries = [];
         }
         
-        // Validate entryIndex if provided
-        if(ref.entryIndex != null) {
-            if(ref.entryIndex < 0 || ref.entryIndex >= card.entries.length) {
-                console.warn(`⚠️ Entry index ${ref.entryIndex} is out of bounds (card has ${card.entries.length} entries). Will create new entry.`);
-            } else {
-                console.log(`✅ Entry at index ${ref.entryIndex} exists:`, {
-                    player: card.entries[ref.entryIndex]?.player,
-                    playerUrl: card.entries[ref.entryIndex]?.playerUrl,
-                    rank: card.entries[ref.entryIndex]?.rank
-                });
-            }
-        }
-        
         // Update card mapUrl if resultUrl contains map info (extract from game URL)
         if(payload.resultUrl){
             try{
@@ -5094,45 +6803,81 @@
             }catch(_){ /* ignore map URL update errors */ }
         }
         
-        if(ref.entryIndex != null){
-            // Update existing entry - completely replace with new data
-            const oldEntry = card.entries[ref.entryIndex];
-            const oldPlayerUrl = oldEntry?.playerUrl;
-            const newPlayerUrl = payload.playerUrl || oldPlayerUrl;
-            
-            // Create clean payload - remove empty/undefined values but keep all provided values
+        // AUTOMATIC DETECTION: Find existing entry by playerUrl or resultUrl
+        let existingEntryIndex = null;
+        let existingEntry = null;
+        
+        // If entryIndex is explicitly provided, use it
+        if(ref.entryIndex != null && ref.entryIndex >= 0 && ref.entryIndex < card.entries.length) {
+            existingEntryIndex = ref.entryIndex;
+            existingEntry = card.entries[ref.entryIndex];
+            console.log(`✅ Using provided entryIndex ${ref.entryIndex}`);
+        } else {
+            // Auto-detect existing entry
+            existingEntry = findExistingEntry(card, payload.playerUrl, payload.resultUrl);
+            if(existingEntry) {
+                existingEntryIndex = card.entries.indexOf(existingEntry);
+                console.log(`✅ Auto-detected existing entry at index ${existingEntryIndex}:`, {
+                    player: existingEntry.player,
+                    playerUrl: existingEntry.playerUrl,
+                    resultLabel: existingEntry.resultLabel
+                });
+            } else {
+                console.log(`ℹ️ No existing entry found - will add new entry`);
+            }
+        }
+        
+        // Create clean payload
             const cleanPayload = {};
             Object.keys(payload).forEach(key => {
-                // Keep all non-empty values, including empty strings if explicitly provided
                 if(payload[key] !== undefined && payload[key] !== null) {
                     cleanPayload[key] = payload[key];
                 }
             });
             
-            // If playerUrl changed, clear old playerInfo (will be fetched during enrichment)
-            // Otherwise preserve existing playerInfo if available
+        // Calculate correct rank and position based on resultLabel
+        const { rank, insertIndex } = calculateRankAndPosition(card, cleanPayload, existingEntryIndex);
+        cleanPayload.rank = rank;
+        
+        console.log(`📊 Calculated position: rank ${rank}, insertIndex ${insertIndex}`, {
+            resultLabel: cleanPayload.resultLabel,
+            parsedValue: parseResultValue(cleanPayload.resultLabel)
+        });
+        
+        if(existingEntryIndex != null && existingEntryIndex >= 0){
+            // UPDATE EXISTING ENTRY
+            const oldEntry = card.entries[existingEntryIndex];
+            const oldPlayerUrl = oldEntry?.playerUrl;
+            const newPlayerUrl = payload.playerUrl || oldPlayerUrl;
             const playerUrlChanged = oldPlayerUrl && newPlayerUrl && oldPlayerUrl !== newPlayerUrl;
             const preservedPlayerInfo = (!playerUrlChanged && oldEntry?.playerInfo) ? oldEntry.playerInfo : null;
             
-            // Create updated entry - new data takes precedence, but preserve playerInfo if URL didn't change
+            // Create updated entry
             const updatedEntry = {
-                ...oldEntry, // Start with old entry
-                ...cleanPayload, // Overwrite with new data
-                // Handle playerInfo: clear if URL changed, preserve if same, use new if provided
+                ...oldEntry,
+                ...cleanPayload,
                 playerInfo: playerUrlChanged ? null : (cleanPayload.playerInfo || preservedPlayerInfo || null)
             };
             
-            // Ensure playerUrl is set if provided
-            if(cleanPayload.playerUrl) {
-                updatedEntry.playerUrl = cleanPayload.playerUrl;
-            }
-            // Ensure player name is set if provided
-            if(cleanPayload.player) {
-                updatedEntry.player = cleanPayload.player;
+            // If resultLabel changed, we need to re-sort entries
+            const resultChanged = oldEntry?.resultLabel !== cleanPayload.resultLabel;
+            
+            if(resultChanged && insertIndex !== existingEntryIndex){
+                // Remove old entry and insert at new position
+                card.entries.splice(existingEntryIndex, 1);
+                card.entries.splice(insertIndex, 0, updatedEntry);
+                console.log(`🔄 Moved entry from index ${existingEntryIndex} to ${insertIndex} due to result change`);
+            } else {
+                // Just update in place
+                card.entries[existingEntryIndex] = updatedEntry;
             }
             
-            card.entries[ref.entryIndex] = updatedEntry;
-            console.log(`✅ Updated entry at index ${ref.entryIndex}:`, {
+            // Recalculate all ranks after update
+            card.entries.forEach((entry, idx) => {
+                entry.rank = `${idx + 1}.`;
+            });
+            
+            console.log(`✅ Updated entry:`, {
                 old: { 
                     player: oldEntry?.player, 
                     playerUrl: oldEntry?.playerUrl,
@@ -5145,19 +6890,22 @@
                     resultLabel: updatedEntry.resultLabel,
                     rank: updatedEntry.rank
                 },
-                playerUrlChanged: playerUrlChanged
+                moved: resultChanged && insertIndex !== existingEntryIndex
             });
         } else {
-            card.entries = card.entries || [];
-            // Auto-assign rank if not provided
-            if(!payload.rank && card.entries.length > 0){
-                const lastRank = card.entries[card.entries.length - 1].rank;
-                const rankNum = parseInt(lastRank) || card.entries.length;
-                payload.rank = `${rankNum + 1}.`;
-            } else if(!payload.rank){
-                payload.rank = '1.';
-            }
-            card.entries.push(payload);
+            // ADD NEW ENTRY
+            // Insert at calculated position
+            card.entries.splice(insertIndex, 0, cleanPayload);
+            
+            // Recalculate all ranks after insert
+            card.entries.forEach((entry, idx) => {
+                entry.rank = `${idx + 1}.`;
+            });
+            
+            console.log(`✅ Added new entry at index ${insertIndex} with rank ${rank}:`, {
+                player: cleanPayload.player,
+                resultLabel: cleanPayload.resultLabel
+            });
         }
 
         // Save leaderboards - use the same path that worked for GET
@@ -5165,19 +6913,42 @@
         const updatedLeaderboards = JSON.stringify(json, null, 2);
         console.log('Saving to:', savePath, 'SHA:', base.sha || '(new file)');
         
-        // If file doesn't exist (no SHA), create it; otherwise update it
-        const res1 = await ghPut(savePath, updatedLeaderboards, base.sha, 'chore(admin): edit entry', 3);
+        // Validate JSON before saving
+        try {
+            JSON.parse(updatedLeaderboards);
+        } catch(e) {
+            throw new Error('Invalid JSON generated: ' + e.message);
+        }
         
-        console.log('✅ Leaderboards.json saved successfully');
+        // Validate payload before saving
+        if(payload.player && !payload.playerUrl) {
+            console.warn('⚠️ Entry has player name but no playerUrl - this may cause issues');
+        }
+        
+        // If file doesn't exist (no SHA), create it; otherwise update it
+        const commitMessage = ref.entryIndex != null 
+            ? `chore(admin): edit entry - ${payload.player || 'record'}`
+            : `chore(admin): add entry - ${payload.player || 'record'}`;
+        const res1 = await ghPut(savePath, updatedLeaderboards, base.sha, commitMessage, 2);
+        
+        // Verify save succeeded
+        if(!res1 || !res1.content) {
+            throw new Error('Save response invalid - file may not have been saved');
+        }
+        
+        console.log('✅ Leaderboards.json saved successfully', {
+            commitSha: res1.commit?.sha?.substring(0, 7),
+            path: res1.content?.path
+        });
 
-        // Enrich and update enrichedLeaderboards.json - run in background (non-blocking)
-        // Don't await this - let it run in background while user sees success message
+        // CRITICAL: Update enrichedLeaderboards.json immediately with new data
+        // This ensures the UI shows the updated data right away
         (async () => {
             try {
-                console.log('🔄 Starting background enrichment process...');
-            showSuccessNotification('🔄 Enriching data with images and player info...');
+                console.log('🔄 Updating enrichedLeaderboards.json with new data...');
+                showSuccessNotification('🔄 Aktualizuji enrichedLeaderboards.json...');
             
-            // Try to load existing enriched data first to preserve existing enrichment
+                // Load existing enriched data to preserve images and playerInfo
             let existingEnriched = null;
             let enrichedSha = null;
             try {
@@ -5269,72 +7040,19 @@
                 console.log(`📥 Found ${entriesNeedingPlayerInfo.length} entries needing playerInfo, will fetch during enrichment`);
             }
             
-            // Enrich the data - use existing cache to speed up
+            // CRITICAL: Always use groupsCopy (from leaderboards.json) as the source of truth
+            // We'll merge enriched data (images, playerInfo) into it, but structure comes from leaderboards.json
             let enrichedData;
             try {
-                // Only enrich if we have new data to fetch, otherwise use existing cache
-                // enrichGroupsDataWithCache will automatically fetch missing playerInfo
+                // Try to enrich - this will fetch missing playerInfo and map data
                 enrichedData = await enrichGroupsDataWithCache(groupsCopy, existingMapCache, existingPlayerCache);
                 console.log(`✅ Enrichment complete: ${enrichedData.stats.maps} maps, ${enrichedData.stats.players} players`);
             } catch(enrichError) {
-                console.warn('⚠️ Enrichment failed, using existing enriched data:', enrichError.message);
-                // If enrichment fails (e.g., rate limit), merge existing enriched data with new groups
-                // This ensures we keep existing images even if new ones can't be fetched
+                console.warn('⚠️ Enrichment failed, will merge with existing enriched data:', enrichError.message);
+                // If enrichment fails, create enrichedData from groupsCopy with existing enriched data merged in
+                // CRITICAL: groupsCopy is the source of truth for structure
                 enrichedData = {
-                    groups: groupsCopy.map(group => {
-                        // Try to find matching group in existing enriched data
-                        const existingGroup = existingEnriched?.groups?.find(g => g.id === group.id);
-                        if(existingGroup) {
-                            // Merge cards - use existing enriched cards where possible
-                            const mergedCards = group.cards.map(card => {
-                                const existingCard = existingGroup.cards?.find(c => 
-                                    (c.mapUrl && card.mapUrl && c.mapUrl === card.mapUrl) || 
-                                    (!c.mapUrl && !card.mapUrl && c.title === card.title)
-                                );
-                                if(existingCard) {
-                                    // Merge: use existing map/playerInfo, but keep new entries with smart matching
-                                    // CRITICAL: New data from leaderboards.json takes precedence - it's the source of truth
-                                    return {
-                                        ...card, // Use new card structure
-                                        map: existingCard.map || card.map || null, // Preserve map images
-                                        entries: card.entries.map(entry => {
-                                            // Use smart matching to find existing entry
-                                            const existingEntry = findMatchingEntry(entry, existingCard.entries);
-                                            if(existingEntry) {
-                                                // IMPORTANT: New entry data is the source of truth
-                                                // Only preserve playerInfo if:
-                                                // 1. New entry doesn't have playerInfo yet (will be fetched)
-                                                // 2. PlayerUrl matches (same user, just preserving image)
-                                                const shouldPreservePlayerInfo = 
-                                                    !entry.playerInfo && 
-                                                    entry.playerUrl === existingEntry.playerUrl && 
-                                                    existingEntry.playerInfo;
-                                                
-                                                const mergedEntry = {
-                                                    ...entry, // NEW DATA TAKES PRECEDENCE - this is the updated entry
-                                                    // Only preserve playerInfo if URL matches and new entry doesn't have it
-                                                    playerInfo: shouldPreservePlayerInfo ? existingEntry.playerInfo : entry.playerInfo || null
-                                                };
-                                                
-                                                console.log(`🔄 Merged entry:`, {
-                                                    new: { player: entry.player, playerUrl: entry.playerUrl, rank: entry.rank },
-                                                    existing: { playerUrl: existingEntry.playerUrl, hasPlayerInfo: !!existingEntry.playerInfo },
-                                                    preservedPlayerInfo: shouldPreservePlayerInfo
-                                                });
-                                                
-                                                return mergedEntry;
-                                            }
-                                            // New entry, no existing match - use as-is
-                                            return entry;
-                                        })
-                                    };
-                                }
-                                return card;
-                            });
-                            return { ...group, cards: mergedCards };
-                        }
-                        return group;
-                    }),
+                    groups: groupsCopy, // Use groupsCopy as base - it has ALL entries from leaderboards.json
                     stats: {
                         maps: existingMapCache.size,
                         players: existingPlayerCache.size,
@@ -5365,75 +7083,162 @@
                 return null;
             }
             
-            // Ensure we preserve ALL existing images even if enrichment partially failed
-            // Merge back any existing enriched data that wasn't overwritten
-            // BUT: prioritize new data over old data to ensure updates are reflected
-            if(existingEnriched && existingEnriched.groups) {
-                for(const existingGroup of existingEnriched.groups) {
-                    const group = enrichedData.groups.find(g => g.id === existingGroup.id);
-                    if(group) {
-                        for(const existingCard of existingGroup.cards || []) {
-                            const card = group.cards.find(c => 
-                                (c.mapUrl && existingCard.mapUrl && c.mapUrl === existingCard.mapUrl) || 
-                                (!c.mapUrl && !existingCard.mapUrl && c.title === existingCard.title)
-                            );
-                            if(card) {
-                                // Preserve existing map if new one is missing
-                                if(existingCard.map && !card.map) {
-                                    card.map = existingCard.map;
-                                }
-                                // Smart merge: preserve existing playerInfo ONLY if entry matches and new entry doesn't have playerInfo
-                                // This ensures updates are reflected while preserving images for unchanged entries
-                                for(const existingEntry of existingCard.entries || []) {
-                                    const entry = findMatchingEntry(existingEntry, card.entries);
-                                    if(entry) {
-                                        // Only preserve playerInfo if:
-                                        // 1. New entry doesn't have playerInfo yet, AND
-                                        // 2. PlayerUrl matches (user didn't change)
-                                        if(!entry.playerInfo && existingEntry.playerInfo && 
-                                           entry.playerUrl === existingEntry.playerUrl) {
-                                        entry.playerInfo = existingEntry.playerInfo;
-                                        }
-                                    }
+            // CRITICAL: Always update enrichedLeaderboards.json with current structure from leaderboards.json
+            // Even if enrichment fails, we need to sync the structure so UI shows correct data
+            // Use existing enriched data (images, playerInfo) but update structure from leaderboards.json
+            
+            // CRITICAL: Merge new structure from leaderboards.json with existing enriched data
+            // New structure from leaderboards.json is ALWAYS the source of truth for entries
+            // This ensures ALL entries from leaderboards.json are included, even if they don't exist in enriched data
+            const finalGroups = groupsCopy.map(group => {
+                // Find matching group in enriched data
+                const enrichedGroup = enrichedData.groups.find(g => g.id === group.id);
+                if(!enrichedGroup) {
+                    // New group - use as-is, will be enriched later
+                    console.log(`📦 New group: ${group.id}, using as-is`);
+                    return group;
+                }
+                
+                return {
+                    ...group, // Use new structure (source of truth)
+                    cards: group.cards.map(card => {
+                        // Find matching card in enriched data by mapUrl or title
+                        const enrichedCard = enrichedGroup.cards.find(c => {
+                            if(card.mapUrl && c.mapUrl) {
+                                return c.mapUrl === card.mapUrl;
+                            }
+                            if(!card.mapUrl && !c.mapUrl) {
+                                return c.title === card.title;
+                            }
+                            return false;
+                        });
+                        
+                        if(!enrichedCard) {
+                            // New card - use as-is, will be enriched later
+                            console.log(`📦 New card: ${card.title || card.mapUrl}, using as-is`);
+                            return card;
+                        }
+                        
+                        // CRITICAL: card.entries from leaderboards.json is the source of truth
+                        // It contains ALL entries in the correct order - we just need to preserve playerInfo where possible
+                        const mergedEntries = card.entries.map(entry => {
+                            // Try to find matching entry in enriched card by multiple criteria
+                            let enrichedEntry = null;
+                            
+                            // Strategy 1: Match by resultUrl (most reliable)
+                            if(entry.resultUrl) {
+                                enrichedEntry = enrichedCard.entries.find(e => e.resultUrl === entry.resultUrl);
+                            }
+                            
+                            // Strategy 2: Match by playerUrl + rank
+                            if(!enrichedEntry && entry.playerUrl && entry.rank) {
+                                enrichedEntry = enrichedCard.entries.find(e => 
+                                    e.playerUrl === entry.playerUrl && e.rank === entry.rank
+                                );
+                            }
+                            
+                            // Strategy 3: Match by playerUrl only (if only one match)
+                            if(!enrichedEntry && entry.playerUrl) {
+                                const matches = enrichedCard.entries.filter(e => e.playerUrl === entry.playerUrl);
+                                if(matches.length === 1) {
+                                    enrichedEntry = matches[0];
                                 }
                             }
-                        }
-                    }
-                }
-            }
-            
-            // Verify enrichment worked
-            let hasEnrichment = false;
-            for(const group of enrichedData.groups) {
-                for(const card of group.cards) {
-                    if(card.map) hasEnrichment = true;
-                    for(const entry of card.entries) {
-                        if(entry.playerInfo) hasEnrichment = true;
-                    }
-                }
-            }
-            
-            if(!hasEnrichment && existingMapCache.size === 0 && existingPlayerCache.size === 0) {
-                throw new Error('Enrichment completed but no enriched data found. Check console for errors.');
-            }
+                            
+                            // If found, preserve playerInfo but use new entry data
+                            if(enrichedEntry && enrichedEntry.playerInfo) {
+                                return {
+                                    ...entry, // NEW entry data is source of truth (rank, resultLabel, etc.)
+                                    playerInfo: enrichedEntry.playerInfo // Preserve images and profile data
+                                };
+                            }
+                            
+                            // New entry or no match - use as-is (will be enriched later)
+                            // This ensures new entries from leaderboards.json are included
+                            console.log(`📦 New entry: ${entry.player} (${entry.rank}), no match found in enriched data`);
+                            return entry;
+                        });
+                        
+                        console.log(`✅ Merged card "${card.title || card.mapUrl}": ${card.entries.length} entries from leaderboards.json, ${mergedEntries.length} after merge`);
+                        
+                        return {
+                            ...card, // New card structure is source of truth
+                            map: enrichedCard.map || card.map || null, // Preserve map images
+                            entries: mergedEntries // Use merged entries - ALL entries from leaderboards.json are included
+                        };
+                    })
+                };
+            });
             
             const enrichedPayload = {
                 generatedAt: new Date().toISOString(),
                 source: 'https://www.geoguessr.com',
-                groups: enrichedData.groups,
-                lookupCounts: enrichedData.stats
+                groups: finalGroups,
+                lookupCounts: enrichedData.stats || { maps: existingMapCache.size, players: existingPlayerCache.size }
             };
             
-                await ghPut('data/enrichedLeaderboards.json', JSON.stringify(enrichedPayload, null, 2), enrichedSha, 'chore(admin): enrich and sync data', 3);
-            console.log('✅ Enriched data saved to GitHub');
-            showSuccessNotification('✅ Enrichment complete! Data saved with images.');
+            // Save immediately - don't wait for full enrichment
+            // This ensures UI shows updated data right away
+            await ghPut('data/enrichedLeaderboards.json', JSON.stringify(enrichedPayload, null, 2), enrichedSha, `chore(admin): sync enrichedLeaderboards.json with leaderboards.json - ${ref.entryIndex != null ? 'edit' : 'add'} entry`, 2);
+            console.log('✅ enrichedLeaderboards.json updated immediately with new structure');
+            console.log(`📊 Updated groups: ${finalGroups.length}, total entries: ${finalGroups.reduce((sum, g) => sum + (g.cards || []).reduce((s, c) => s + (c.entries || []).length, 0), 0)}`);
+            showSuccessNotification('✅ enrichedLeaderboards.json aktualizován! Data se zobrazí po obnovení stránky.');
+            
+            // Now run enrichment in background for missing images/playerInfo (non-blocking)
+            (async () => {
+                try {
+                    console.log('🔄 Starting background enrichment for missing data...');
+                    const enrichedDataFull = await enrichGroupsDataWithCache(groupsCopy, existingMapCache, existingPlayerCache);
+                    
+                    // Update again with fully enriched data
+                    const enrichedPayloadFull = {
+                        generatedAt: new Date().toISOString(),
+                        source: 'https://www.geoguessr.com',
+                        groups: enrichedDataFull.groups,
+                        lookupCounts: enrichedDataFull.stats
+                    };
+                    
+                    // Get fresh SHA
+                    let freshSha = enrichedSha;
+                    try {
+                        const freshBase = await ghGet('data/enrichedLeaderboards.json');
+                        freshSha = freshBase.sha;
+                    } catch(_) {}
+                    
+                    await ghPut('data/enrichedLeaderboards.json', JSON.stringify(enrichedPayloadFull, null, 2), freshSha, 'chore(admin): enrich with images and player info', 2);
+                    console.log('✅ Background enrichment complete');
+                } catch(e) {
+                    console.warn('⚠️ Background enrichment failed (non-critical):', e.message);
+                }
+            })();
+            
         } catch(e){ 
-            console.error('❌ Failed to enrich and update enrichedLeaderboards.json:', e);
+            console.error('❌ Failed to update enrichedLeaderboards.json:', e);
             console.error('Stack trace:', e.stack);
-            // Don't throw - leaderboards.json is already saved, enrichment can be retried
-                showSuccessNotification('⚠️ Data saved but enrichment failed. Images may not load. Error: ' + (e.message || 'Unknown error'));
+            // Try to save at least basic structure without enrichment
+            try {
+                const basicPayload = {
+                    generatedAt: new Date().toISOString(),
+                    source: 'https://www.geoguessr.com',
+                    groups: json.groups, // Use raw groups from leaderboards.json
+                    lookupCounts: { maps: 0, players: 0 }
+                };
+                
+                let basicSha = null;
+                try {
+                    const basicBase = await ghGet('data/enrichedLeaderboards.json');
+                    basicSha = basicBase.sha;
+                } catch(_) {}
+                
+                await ghPut('data/enrichedLeaderboards.json', JSON.stringify(basicPayload, null, 2), basicSha, 'chore(admin): sync structure (enrichment failed)', 2);
+                console.log('✅ Saved basic structure (enrichment will run later)');
+                showSuccessNotification('⚠️ Struktura aktualizována, enrichment proběhne později');
+            } catch(saveError) {
+                console.error('❌ Failed to save even basic structure:', saveError);
+                showSuccessNotification('⚠️ Data uložena do leaderboards.json, ale enrichedLeaderboards.json se nepodařilo aktualizovat');
+            }
         }
-        })(); // Run in background, don't await
+        })(); // Run async, but we try to await critical parts
         
         // Clear ALL cache keys (including ui.js cache) to force refresh
         try {
@@ -5508,18 +7313,19 @@
             console.warn('Nepodařilo se aktualizovat lokální soubor:', fileError);
         }
         
-        // Show success notification
-        showSuccessNotification('✅ Changes saved successfully! Refreshing page...');
+        // Show success notification immediately
+        showSuccessNotification('✅ Changes saved successfully! Refreshing data...');
         
-        // Force hard reload to bypass all caches and get fresh data
+        // Refresh data without page reload for faster UX
+        // Small delay to ensure GitHub API has propagated changes
         setTimeout(() => {
-            // Use location.reload(true) for hard reload, or add cache busting
-            window.location.href = window.location.href.split('#')[0] + '?refresh=' + Date.now();
-        }, 2000); // Increased delay to ensure GitHub API has propagated changes
+            // Trigger data refresh event instead of page reload
+            window.dispatchEvent(new Event('gg-refresh-data'));
+            console.log('✅ Data refresh triggered');
+        }, 500); // Reduced delay - GitHub API is usually fast enough
     }
     function activateAdminMode(){
         if(isAdminAuthenticated()){
-            bindContextMenu();
             showAdminIndicator();
             console.log('✅ Admin mode activated automatically');
         }
@@ -5542,14 +7348,14 @@
         const title = el('div', { class: 'admin-sidebar-title' }, ['🔧 Admin']);
         content.appendChild(title);
         
-        // Add Record button
-        const addRecordBtn = el('button', {
+        // Unified Add/Edit Record button
+        const recordBtn = el('button', {
             class: 'admin-sidebar-button admin-sidebar-button--primary',
             onclick: () => {
-                openAddRecordEditor();
+                openUnifiedRecordEditor();
             }
-        }, ['➕ Přidat záznam']);
-        content.appendChild(addRecordBtn);
+        }, ['✏️ Přidat/Upravit záznam']);
+        content.appendChild(recordBtn);
         
         // Logout button
         const logoutBtn = el('button', {
@@ -6130,7 +7936,6 @@
             uiLogin(()=>{ 
                 // After successful login, hide maintenance overlay and show content
                 hideMaintenanceOverlay();
-                bindContextMenu(); 
                 showAdminIndicator();
                 removeRoot();
                 location.hash = '#admin';
@@ -6220,7 +8025,6 @@
             // Not authenticated, show login
             hideMaintenanceOverlay();
             uiLogin(()=>{ 
-                bindContextMenu(); 
                 showAdminIndicator();
                 removeRoot(); 
                 hideMaintenanceOverlay();
